@@ -21,6 +21,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './prompt.mjs';
@@ -151,11 +152,16 @@ const runFfmpeg = (args, tool = 'ffmpeg') =>
         LD_LIBRARY_PATH: [binDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':'),
       },
     });
-    let err = '';
-    let out = '';
-    p.stderr.on('data', (d) => (err += d.toString()));
-    p.stdout.on('data', (d) => (out += d.toString()));
-    p.on('close', (code) => (code === 0 ? ok({ out, err }) : fail(new Error(err.slice(-800)))));
+    const errChunks = [];
+    const outChunks = [];
+    p.stderr.on('data', (d) => errChunks.push(d));
+    p.stdout.on('data', (d) => outChunks.push(d));
+    p.on('close', (code) => {
+      const out = decodeOut(Buffer.concat(outChunks));
+      const err = decodeOut(Buffer.concat(errChunks));
+      if (code === 0) ok({ out, err });
+      else fail(new Error(err.slice(-800) || `${tool} 실패 (code ${code})`));
+    });
     p.on('error', fail);
   });
 
@@ -188,20 +194,72 @@ const writeMeta = (meta) => writeFileSync(META_PATH, JSON.stringify(meta), 'utf8
  * Node 의 spawn 은 shell 옵션 없이 .cmd 를 실행하지 못하고 ENOENT 를 낸다.
  * 그래서 where/which 가 알려주는 실제 경로를 그대로 쓴다.
  */
+/**
+ * 자식 프로세스 출력 디코딩.
+ *
+ * 윈도우 콘솔 프로그램은 UTF-8 이 아니라 시스템 코드 페이지로 출력한다.
+ * (한국어 윈도우면 CP949) 그대로 UTF-8 로 읽으면 글자가 깨져서
+ * 정작 중요한 오류 메시지를 못 읽는다.
+ */
+const decodeOut = (buf) => {
+  if (!buf?.length) return '';
+  const utf8 = buf.toString('utf8');
+  if (!utf8.includes('\uFFFD')) return utf8;
+  for (const enc of ['euc-kr', 'gbk', 'shift_jis', 'windows-1252']) {
+    try {
+      const text = new TextDecoder(enc).decode(buf);
+      if (!text.includes('\uFFFD')) return text;
+    } catch {
+      /* 이 인코딩을 지원하지 않으면 다음 것으로 */
+    }
+  }
+  return utf8;
+};
+
+/**
+ * claude 실행 파일 찾기.
+ *
+ * where/which 를 쓰지 않는다. 윈도우의 where 는 시스템 코드 페이지로 경로를 출력해서,
+ * 사용자 이름에 한글이 들어가면(C:\Users\정대진\...) 읽는 쪽에서 깨진다.
+ * 깨진 경로로 실행하면 "지정된 경로를 찾을 수 없습니다" 가 난다.
+ * PATH 환경변수는 Node 가 제대로 된 문자열로 주므로 직접 훑는다.
+ */
 const findClaudeCli = () => {
-  const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['claude'], {
-    encoding: 'utf8',
-  });
-  if (probe.status !== 0) return null;
-  const lines = probe.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return null;
-  if (process.platform !== 'win32') return lines[0];
-  // where 는 확장자 없는 셸 스크립트까지 같이 알려준다 — 윈도우가 실행할 수 있는 것을 고른다
-  return (
-    lines.find((l) => /\.exe$/i.test(l)) ??
-    lines.find((l) => /\.(cmd|bat)$/i.test(l)) ??
-    lines[0]
-  );
+  const isWin = process.platform === 'win32';
+  const exts = isWin ? ['.exe', '.cmd', '.bat', ''] : [''];
+  const sep = isWin ? ';' : ':';
+
+  const fromPath = (process.env.PATH ?? '')
+    .split(sep)
+    .map((d) => d.trim().replace(/^"|"$/g, ''))
+    .filter(Boolean);
+
+  // PATH 에 안 잡혀도 흔히 설치되는 자리들
+  const extra = isWin
+    ? [
+        join(homedir(), '.local', 'bin'),
+        join(process.env.APPDATA ?? '', 'npm'),
+        join(process.env.LOCALAPPDATA ?? '', 'Programs', 'claude'),
+      ]
+    : [
+        join(homedir(), '.local', 'bin'),
+        '/usr/local/bin',
+        '/opt/homebrew/bin',
+        '/usr/bin',
+      ];
+
+  for (const dir of [...fromPath, ...extra]) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = join(dir, `claude${ext}`);
+      try {
+        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+      } catch {
+        /* 접근할 수 없는 경로는 건너뛴다 */
+      }
+    }
+  }
+  return null;
 };
 
 const hasClaudeCli = () => Boolean(findClaudeCli());
@@ -234,7 +292,6 @@ const checkInstall = () => {
     const binDir = dirname(ff);
     const probe = spawnSync(ff, ['-version'], {
       cwd: binDir,
-      encoding: 'utf8',
       env: {
         ...process.env,
         DYLD_LIBRARY_PATH: [binDir, process.env.DYLD_LIBRARY_PATH].filter(Boolean).join(':'),
@@ -245,7 +302,7 @@ const checkInstall = () => {
       },
     });
     if (probe.status !== 0) {
-      const why = (probe.stderr || probe.error?.message || '').trim().split('\n')[0];
+      const why = (decodeOut(probe.stderr) || probe.error?.message || '').trim().split('\n')[0];
       missing.push(`ffmpeg 이 실행되지 않습니다${why ? ` — ${why}` : ''}`);
     }
   }
@@ -482,12 +539,13 @@ const routes = {
           return onSpawnFail(useShell, e.code ?? 'UNKNOWN', e.message);
         }
 
-        let out = '';
-        let err = '';
+        // 윈도우 콘솔은 UTF-8 이 아닐 수 있어 버퍼로 모아뒀다가 마지막에 디코딩한다
+        const outChunks = [];
+        const errChunks = [];
         let spawnFailed = false;
 
-        child.stdout.on('data', (d) => (out += d.toString()));
-        child.stderr.on('data', (d) => (err += d.toString()));
+        child.stdout.on('data', (d) => outChunks.push(d));
+        child.stderr.on('data', (d) => errChunks.push(d));
 
         // 자식이 먼저 죽으면 stdin.write 가 EPIPE 를 던진다
         child.stdin.on('error', () => {});
@@ -516,6 +574,8 @@ const routes = {
 
         child.on('close', (code) => {
           if (spawnFailed || settled) return; // 이미 error 에서 처리됐다
+          const out = decodeOut(Buffer.concat(outChunks));
+          const err = decodeOut(Buffer.concat(errChunks));
           if (code !== 0) {
             console.error(`[분석] 실패 code=${code}`, err.slice(-400));
             return finish('error', { message: `분석 실패 (code ${code})\n${err.slice(-400)}` });
@@ -596,10 +656,11 @@ const routes = {
     ]);
     if (!p) return json(res, 500, { error: INSTALL_HINT });
 
-    let err = '';
-    p.stderr.on('data', (d) => (err += d.toString()));
+    const errChunks = [];
+    p.stderr.on('data', (d) => errChunks.push(d));
     p.on('error', (e) => json(res, 500, { error: e.message }));
     p.on('close', (code) => {
+      const err = decodeOut(Buffer.concat(errChunks));
       if (code !== 0) return json(res, 500, { error: err.slice(-600) });
       json(res, 200, { url: `/data/${file}` });
     });
@@ -830,7 +891,9 @@ server.listen(PORT, () => {
   console.log('  🎬  쇼츠 제작 스튜디오');
   console.log(`      http://localhost:${PORT}`);
   console.log('');
-  console.log(`      대본 생성: ${hasClaudeCli() ? 'Claude Code CLI 사용 가능' : '수동 모드 (CLI 없음)'}`);
+  const cliPath = findClaudeCli();
+  console.log(`      대본 생성: ${cliPath ? 'Claude Code CLI 사용 가능' : '수동 모드 (CLI 없음)'}`);
+  if (cliPath) console.log(`                 ${cliPath}`);
   console.log('      종료: Ctrl+C');
   console.log('');
 

@@ -247,6 +247,12 @@ npm install
 ```
    sudo 를 쓰기 싫으면 캐시를 따로 쓰면 됩니다: `npm install --cache ~/.npm-shorts`
 
+**`분석 실패 (code 1)` 과 함께 글자가 깨져 나와요** (윈도우)
+→ 고쳐졌습니다. `git pull` 후 다시 실행하세요.
+   사용자 이름에 한글이 들어간 경로(`C:\Users\홍길동\...`)에서 claude 실행 파일을
+   찾을 때 경로가 깨지던 문제였습니다.
+   서버 시작 화면에 찾은 claude 경로가 표시되니, 그래도 안 되면 그 줄을 확인하세요.
+
 **`Library not loaded: libavdevice.dylib`** (맥)
 → 고쳐졌습니다. `git pull` 후 다시 실행하세요.
    ffmpeg 가 쓰는 라이브러리는 바이너리 옆에 있는데, macOS 는 이를 작업 디렉터리
