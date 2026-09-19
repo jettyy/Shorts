@@ -1,0 +1,6 @@
+node_modules/
+output/
+# 폰트는 npm install 시 node_modules에서 자동 복사된다 (scripts/setup-fonts.mjs)
+public/fonts/
+.DS_Store
+*.log

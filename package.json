@@ -1,0 +1,26 @@
+{
+  "name": "shorts-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "카드뉴스형 쇼츠 자동 제조 프로그램 (Remotion 기반, API 키 불필요)",
+  "scripts": {
+    "postinstall": "node scripts/setup-fonts.mjs",
+    "render": "node scripts/render.mjs",
+    "check": "node scripts/check-script.mjs",
+    "studio": "remotion studio",
+    "preview": "remotion studio",
+    "still": "node scripts/still.mjs",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.526",
+    "pretendard": "1.3.9",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.526"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "typescript": "5.8.2"
+  }
+}

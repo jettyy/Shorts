@@ -1,0 +1,39 @@
+{
+  "topic": "모두의카드 포인트",
+  "source": "docs/sample-source.md (예시용 샘플 원문)",
+  "cards": [
+    {
+      "kicker": "몰라서 못 받는 돈",
+      "title": "안 쓰는 카드 포인트\n1년 뒤엔 그냥 사라집니다",
+      "isHook": true,
+      "durationSec": 4.6
+    },
+    {
+      "kicker": "얼마나 잠들어 있나",
+      "title": "1인당 평균 2만 원이\n카드사에 묶여 있다",
+      "durationSec": 4.4
+    },
+    {
+      "title": "포인트 1점은 현금 1원\n계좌로 바로 받을 수 있다",
+      "durationSec": 4.8
+    },
+    {
+      "title": "흩어진 카드사 포인트를\n한 화면에서 모아 본다",
+      "durationSec": 4.6
+    },
+    {
+      "kicker": "걸리는 시간",
+      "title": "조회부터 현금 전환까지\n3분이면 끝난다",
+      "durationSec": 4.3
+    },
+    {
+      "title": "매년 소멸되는 포인트만\n1000억 원이 넘는다",
+      "durationSec": 4.7
+    },
+    {
+      "title": "지금 내 포인트부터\n확인해보세요",
+      "isCta": true,
+      "durationSec": 3.9
+    }
+  ]
+}
