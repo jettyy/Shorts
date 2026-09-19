@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>쇼츠 제작 스튜디오</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230c152c'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='%23e8b44a'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>쇼츠 제작 스튜디오</h1>
+  </div>
+  <div class="steps" id="steps">
+    <button class="step active" data-step="1"><b>1</b> 원문</button>
+    <button class="step" data-step="2"><b>2</b> 대본</button>
+    <button class="step" data-step="3"><b>3</b> 녹음</button>
+    <button class="step" data-step="4"><b>4</b> 출력</button>
+  </div>
+  <div class="status" id="status">확인 중…</div>
+</header>
+
+<main>
+  <!-- ─────────── 1단계: 원문 입력 ─────────── -->
+  <section class="panel" data-panel="1">
+    <div class="panel-head">
+      <h2>기사·블로그 원문을 붙여넣으세요</h2>
+      <p>길이는 상관없습니다. 사실과 숫자만 뽑아서 다시 씁니다 — 원문 문장을 그대로 옮기지 않습니다.</p>
+    </div>
+
+    <textarea id="sourceText" rows="14" placeholder="여기에 원문 전체를 붙여넣으세요…"></textarea>
+    <div class="charcount"><span id="charCount">0</span>자</div>
+
+    <div class="grid2">
+      <label>원문 제목 <input id="srcTitle" placeholder="기사 제목" /></label>
+      <label>매체명 <input id="srcPublisher" placeholder="예: 한국경제" /></label>
+      <label>원문 URL <input id="srcUrl" placeholder="https://…" /></label>
+      <label>정보 확인 기준일 <input id="srcChecked" type="date" /></label>
+    </div>
+
+    <div class="grid2">
+      <label>영상 테마
+        <select id="accent">
+          <option value="gold">gold — 돈·혜택 (지원금, 환급)</option>
+          <option value="mint">mint — 안내·절차 (신청 방법)</option>
+          <option value="coral">coral — 경고·마감 (놓치면 손해)</option>
+          <option value="violet">violet — 분석·비교</option>
+          <option value="ice">ice — 통계·동향</option>
+        </select>
+      </label>
+      <label>카드 장수
+        <select id="cardCount">
+          <option value="6">6장 (짧게)</option>
+          <option value="7" selected>7장 (권장)</option>
+          <option value="8">8장 (정보 많을 때)</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button class="primary big" id="btnAnalyze">대본 만들기</button>
+      <button class="ghost" id="btnManual">수동으로 만들기</button>
+    </div>
+
+    <div class="note" id="analyzeNote"></div>
+
+    <!-- 수동 모드 -->
+    <div class="manual hidden" id="manualBox">
+      <h3>수동 모드</h3>
+      <ol>
+        <li><button class="ghost small" id="btnCopyPrompt">지시문 복사</button> 를 누르고</li>
+        <li>클로드(클로드코드 또는 claude.ai)에 붙여넣은 뒤</li>
+        <li>돌려받은 JSON을 아래에 붙여넣고 저장하세요.</li>
+      </ol>
+      <textarea id="pastedJson" rows="8" placeholder='{ "topic": …, "cards": [ … ] }'></textarea>
+      <button class="primary" id="btnSavePasted">대본 저장</button>
+    </div>
+  </section>
+
+  <!-- ─────────── 2단계: 대본 확인 ─────────── -->
+  <section class="panel hidden" data-panel="2">
+    <div class="panel-head">
+      <h2>대본 확인</h2>
+      <p>제목·내레이션을 다듬을 수 있습니다. 미리보기로 실제 화면을 확인하세요.</p>
+    </div>
+    <div class="summary" id="scriptSummary"></div>
+    <div class="cards" id="cardList"></div>
+    <div class="actions sticky">
+      <button class="ghost" id="btnBack1">← 원문으로</button>
+      <button class="primary big" id="btnToRecord">녹음하러 가기 →</button>
+    </div>
+  </section>
+
+  <!-- ─────────── 3단계: 녹음 ─────────── -->
+  <section class="panel hidden" data-panel="3">
+    <div class="panel-head">
+      <h2>내레이션 녹음</h2>
+      <p>카드별로 대본을 보면서 녹음하고, 들어보고, 마음에 안 들면 다시 녹음하세요.
+         <b>카드 길이는 녹음 길이에 맞춰 자동으로 조정됩니다.</b></p>
+    </div>
+    <div class="rec-progress"><div id="recBar"></div></div>
+    <div class="rec-count" id="recCount"></div>
+    <div class="reclist" id="recList"></div>
+    <div class="actions sticky">
+      <button class="ghost" id="btnBack2">← 대본으로</button>
+      <button class="primary big" id="btnBuildAudio">녹음 확정하고 다음 →</button>
+    </div>
+    <div class="note" id="recNote">녹음 없이 넘어가면 그 카드는 무음으로 처리됩니다.</div>
+  </section>
+
+  <!-- ─────────── 4단계: 최종 출력 ─────────── -->
+  <section class="panel hidden" data-panel="4">
+    <div class="panel-head">
+      <h2>최종 출력</h2>
+      <p>녹음을 입힌 상태로 전체 영상을 렌더링합니다.</p>
+    </div>
+
+    <div class="final" id="finalInfo"></div>
+
+    <div class="preview-audio hidden" id="audioPreview">
+      <h3>합쳐진 내레이션 미리듣기</h3>
+      <audio id="fullAudio" controls></audio>
+    </div>
+
+    <div class="actions">
+      <button class="ghost" id="btnBack3">← 녹음으로</button>
+      <button class="primary big" id="btnRender">최종 영상 만들기</button>
+    </div>
+
+    <div class="render hidden" id="renderBox">
+      <div class="phase" id="renderPhase">준비 중…</div>
+      <div class="bar"><div id="renderBar"></div></div>
+    </div>
+
+    <div class="result hidden" id="resultBox">
+      <h3>완성됐습니다</h3>
+      <video id="resultVideo" controls playsinline></video>
+      <div class="actions">
+        <a class="primary big" id="btnDownload" download>영상 내려받기</a>
+        <button class="ghost" id="btnRestart">새 영상 만들기</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast hidden" id="toast"></div>
+<div class="overlay hidden" id="overlay">
+  <div class="spinner"></div>
+  <div id="overlayText">처리 중…</div>
+</div>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>

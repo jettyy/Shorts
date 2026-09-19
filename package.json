@@ -4,12 +4,13 @@
   "private": true,
   "description": "해설·도표 중심 세로형 쇼츠 자동 제조 프로그램 (Remotion 기반, API 키 불필요)",
   "scripts": {
+    "start": "node app/server.mjs",
+    "ui": "node app/server.mjs",
     "postinstall": "node scripts/setup-fonts.mjs",
     "render": "node scripts/render.mjs",
     "check": "node scripts/check-script.mjs",
     "narration": "node scripts/narration.mjs",
     "studio": "remotion studio",
-    "preview": "remotion studio",
     "still": "node scripts/still.mjs",
     "upgrade": "remotion upgrade"
   },

@@ -9,3 +9,5 @@ public/fonts/
 .source/
 # 직접 녹음한 내레이션 오디오
 public/audio/
+# UI 작업 파일 (녹음 원본, 미리보기 이미지)
+app/data/

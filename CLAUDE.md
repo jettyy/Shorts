@@ -18,6 +18,12 @@
 - 카드마다 `narration`을 쓰고, 녹음 대본을 만들어 사용자에게 안내한다.
 - 주제가 바뀌면 `accent` 테마와 도표 종류를 바꾼다.
 
+## 두 가지 사용 방식
+
+1. **브라우저 앱** (`npm start` → http://localhost:4321) — 원문 입력·대본 확인·녹음·출력을
+   화면에서 처리한다. 앱은 대본 생성을 위해 `claude -p` 를 호출한다(app/server.mjs).
+2. **클로드코드에서 직접** — 아래 순서대로 한다.
+
 ## 원문을 받았을 때 할 일
 
 1. **[CARD_RULES.md](./CARD_RULES.md) 와 [docs/VISUALS.md](./docs/VISUALS.md) 를 읽는다.**
@@ -28,6 +34,15 @@
 6. `npm run render` — `output/카드뉴스_[주제]_[타임스탬프].mp4`
 7. 사용자에게 **영상 경로 + 총 길이 + 녹음 대본 경로**를 알리고,
    목소리를 얹는 방법(README의 "내레이션 녹음해서 얹기")을 안내한다.
+
+## 앱(app/) 관련 메모
+
+- `app/server.mjs` 는 의존성 없이 node 기본 모듈만 쓴다. 패키지를 추가하지 않는다.
+- ffmpeg/ffprobe 는 `node_modules/@remotion/compositor-*/` 의 바이너리를 직접 호출한다.
+  (`npx remotion ffmpeg` 는 호출당 1.4초가 들어서 쓰지 않는다. 못 찾으면 npx 로 폴백)
+- 녹음 길이는 `app/data/clips/meta.json` 에 캐시된다.
+- 렌더 직전에 항상 내레이션을 다시 합치므로(`buildAudio`), 녹음과 영상이 어긋나지 않는다.
+- `app/data/` 는 git 제외 대상이다.
 
 ## 건드리지 말 것
 
