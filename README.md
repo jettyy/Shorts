@@ -237,3 +237,17 @@ $env:PORT=5000; npm start    # Windows PowerShell
 
 **`npm error could not determine executable to run`**
 → 같은 원인입니다(패키지 미설치). `npm install` 후 다시 시도하세요.
+
+**`npm error EACCES ... ~/.npm/_cacache`** (맥)
+→ npm 캐시 폴더에 root 소유 파일이 섞인 경우입니다.
+   과거에 `sudo npm install` 을 한 번이라도 쓰면 이렇게 됩니다.
+```bash
+sudo chown -R $(whoami) ~/.npm
+npm install
+```
+   sudo 를 쓰기 싫으면 캐시를 따로 쓰면 됩니다: `npm install --cache ~/.npm-shorts`
+
+**`Library not loaded: libavdevice.dylib`** (맥)
+→ 고쳐졌습니다. `git pull` 후 다시 실행하세요.
+   ffmpeg 가 쓰는 라이브러리는 바이너리 옆에 있는데, macOS 는 이를 작업 디렉터리
+   기준으로 찾습니다. 이제 바이너리가 있는 폴더에서 실행합니다.

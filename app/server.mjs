@@ -131,7 +131,26 @@ const runFfmpeg = (args, tool = 'ffmpeg') =>
         ),
       );
     }
-    const p = spawn(bin, args, { cwd: root });
+    /**
+     * ffmpeg 가 쓰는 공유 라이브러리(libavcodec 등)는 바이너리 바로 옆에 들어 있다.
+     * 그런데 macOS 빌드는 이를 'libavdevice.dylib' 처럼 경로 없이 참조해서,
+     * dyld 가 현재 작업 디렉터리를 기준으로 찾는다.
+     * 프로젝트 루트에서 실행하면 "Library not loaded: libavdevice.dylib" 로 죽는다.
+     * → 바이너리가 있는 폴더에서 실행하고, 라이브러리 경로도 같이 알려준다.
+     *   (ffmpeg 에 넘기는 파일 경로는 전부 절대 경로라 작업 디렉터리를 바꿔도 안전하다)
+     */
+    const binDir = dirname(bin);
+    const p = spawn(bin, args, {
+      cwd: binDir,
+      env: {
+        ...process.env,
+        DYLD_LIBRARY_PATH: [binDir, process.env.DYLD_LIBRARY_PATH].filter(Boolean).join(':'),
+        DYLD_FALLBACK_LIBRARY_PATH: [binDir, process.env.DYLD_FALLBACK_LIBRARY_PATH]
+          .filter(Boolean)
+          .join(':'),
+        LD_LIBRARY_PATH: [binDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':'),
+      },
+    });
     let err = '';
     let out = '';
     p.stderr.on('data', (d) => (err += d.toString()));
@@ -205,8 +224,30 @@ const checkInstall = () => {
     return { ok: false, missing };
   }
   if (!remotionCli()) missing.push('@remotion/cli (영상 렌더링)');
-  if (!ffBinary('ffmpeg') || !ffBinary('ffprobe')) {
+
+  const ff = ffBinary('ffmpeg');
+  if (!ff || !ffBinary('ffprobe')) {
     missing.push(`@remotion/compositor-* (ffmpeg — ${process.platform}/${process.arch} 용)`);
+  } else {
+    // 파일이 있는 것과 실제로 실행되는 것은 다르다.
+    // (예: macOS 에서 옆의 dylib 를 못 찾아 바로 죽는 경우)
+    const binDir = dirname(ff);
+    const probe = spawnSync(ff, ['-version'], {
+      cwd: binDir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DYLD_LIBRARY_PATH: [binDir, process.env.DYLD_LIBRARY_PATH].filter(Boolean).join(':'),
+        DYLD_FALLBACK_LIBRARY_PATH: [binDir, process.env.DYLD_FALLBACK_LIBRARY_PATH]
+          .filter(Boolean)
+          .join(':'),
+        LD_LIBRARY_PATH: [binDir, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':'),
+      },
+    });
+    if (probe.status !== 0) {
+      const why = (probe.stderr || probe.error?.message || '').trim().split('\n')[0];
+      missing.push(`ffmpeg 이 실행되지 않습니다${why ? ` — ${why}` : ''}`);
+    }
   }
   if (!existsSync(join(root, 'public', 'fonts', 'Pretendard-Bold.woff2'))) {
     missing.push('public/fonts (한글 폰트 — node scripts/setup-fonts.mjs)');
