@@ -249,6 +249,7 @@ button, .primary {
   background: rgba(7, 13, 28, 0.86); backdrop-filter: blur(5px);
   display: grid; place-items: center; gap: 18px; align-content: center;
   font-size: 15px; color: var(--text-2);
+  text-align: center; white-space: pre-line; padding: 0 24px;
 }
 .spinner {
   width: 40px; height: 40px; border-radius: 99px;

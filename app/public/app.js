@@ -75,30 +75,77 @@ $('#sourceText').addEventListener('input', (e) => {
   $('#charCount').textContent = e.target.value.length.toLocaleString('ko-KR');
 });
 
+const analyzeFailed = (message) => {
+  idle();
+  $('#analyzeNote').className = 'note err';
+  $('#analyzeNote').textContent = message;
+  $('#manualBox').classList.remove('hidden');
+  $('#btnAnalyze').disabled = false;
+  toast('자동 생성에 실패했습니다. 수동 모드를 쓰세요.', true);
+};
+
 $('#btnAnalyze').addEventListener('click', async () => {
   const input = collectInput();
   if (input.text.length < 100) return toast('원문이 너무 짧습니다. 기사 전체를 붙여넣어 주세요.', true);
 
   $('#analyzeNote').textContent = '';
-  busy('원문을 읽고 대본을 만드는 중입니다… (1~2분 걸릴 수 있습니다)');
+  $('#btnAnalyze').disabled = true;
+  busy('원문을 읽는 중입니다…');
+
+  let jobId;
   try {
-    const { script } = await api('/api/analyze', {
+    ({ jobId } = await api('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
-    });
-    state.script = script;
+    }));
+  } catch (e) {
+    // 서버가 꺼져 있거나 응답 전에 끊긴 경우
+    return analyzeFailed(
+      e.message === 'Failed to fetch'
+        ? '서버에 연결하지 못했습니다.\n터미널에서 npm start 가 아직 실행 중인지 확인해주세요.'
+        : e.message,
+    );
+  }
+
+  // 분석은 1~2분 걸린다. 요청을 붙잡고 있지 않고 진행 상황만 받아본다.
+  const es = new EventSource(`/api/analyze/stream?job=${jobId}`);
+  let done = false;
+
+  es.addEventListener('progress', (ev) => {
+    const { elapsed } = JSON.parse(ev.data);
+    $('#overlayText').textContent =
+      `원문을 읽고 대본을 만드는 중입니다… ${elapsed}초\n(보통 1~2분 걸립니다)`;
+  });
+
+  es.addEventListener('done', (ev) => {
+    done = true;
+    es.close();
+    idle();
+    $('#btnAnalyze').disabled = false;
+    state.script = JSON.parse(ev.data).script;
     renderScript();
     goStep(2);
-    toast(`대본 ${script.cards.length}장을 만들었습니다`);
-  } catch (e) {
-    $('#analyzeNote').className = 'note err';
-    $('#analyzeNote').textContent = e.message;
-    $('#manualBox').classList.remove('hidden');
-    toast('자동 생성에 실패했습니다. 수동 모드를 쓰세요.', true);
-  } finally {
-    idle();
-  }
+    toast(`대본 ${state.script.cards.length}장을 만들었습니다`);
+  });
+
+  es.addEventListener('error', (ev) => {
+    done = true;
+    es.close();
+    let msg = '분석 중 문제가 생겼습니다.';
+    try {
+      msg = JSON.parse(ev.data).message;
+    } catch {
+      msg = '분석 중 서버와의 연결이 끊겼습니다.\n터미널에 표시된 오류를 확인해주세요.';
+    }
+    analyzeFailed(msg);
+  });
+
+  // EventSource 자체가 끊기는 경우(서버 다운 등)도 잡는다
+  es.onerror = () => {
+    if (done || es.readyState !== EventSource.CLOSED) return;
+    analyzeFailed('서버와의 연결이 끊겼습니다.\n터미널 창에 오류가 찍혔는지 확인해주세요.');
+  };
 });
 
 $('#btnManual').addEventListener('click', () => {

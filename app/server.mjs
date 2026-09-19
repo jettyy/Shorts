@@ -44,6 +44,7 @@ setupFonts({ silent: true });
 /* ── 유틸 ────────────────────────────────────────────────── */
 
 const json = (res, code, body) => {
+  if (res.headersSent || res.writableEnded) return; // 응답은 한 번만
   const payload = JSON.stringify(body);
   res.writeHead(code, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -137,12 +138,53 @@ const readMeta = () => {
 };
 const writeMeta = (meta) => writeFileSync(META_PATH, JSON.stringify(meta), 'utf8');
 
-const hasClaudeCli = () => {
+/**
+ * `claude` 실행 파일의 실제 경로를 찾는다.
+ *
+ * 윈도우에서 전역 설치된 claude 는 `claude.cmd` 셸 스크립트다.
+ * Node 의 spawn 은 shell 옵션 없이 .cmd 를 실행하지 못하고 ENOENT 를 낸다.
+ * 그래서 where/which 가 알려주는 실제 경로를 그대로 쓴다.
+ */
+const findClaudeCli = () => {
   const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['claude'], {
     encoding: 'utf8',
   });
-  return probe.status === 0 && Boolean(probe.stdout.trim());
+  if (probe.status !== 0) return null;
+  const lines = probe.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  if (process.platform !== 'win32') return lines[0];
+  // where 는 확장자 없는 셸 스크립트까지 같이 알려준다 — 윈도우가 실행할 수 있는 것을 고른다
+  return (
+    lines.find((l) => /\.exe$/i.test(l)) ??
+    lines.find((l) => /\.(cmd|bat)$/i.test(l)) ??
+    lines[0]
+  );
 };
+
+const hasClaudeCli = () => Boolean(findClaudeCli());
+
+/**
+ * claude CLI 를 띄운다.
+ *
+ * 윈도우에서 전역 설치된 claude 는 `claude.cmd` 배치 파일인데,
+ * Node 는 보안 패치 이후 배치 파일을 shell 없이 실행하지 못한다(ENOENT/EINVAL).
+ * 그래서 배치 파일이면 shell 을 거치고, 그래도 실패하면 한 번 더 shell 로 재시도한다.
+ * (프롬프트는 stdin 으로 넘기므로 셸에 문자열이 섞일 일은 없다)
+ */
+const spawnClaude = (cli, useShell) => {
+  const args = ['-p', '--output-format', 'text'];
+  if (useShell) {
+    // 경로에 공백이 있을 수 있어 따옴표로 감싼다 (예: C:\\Program Files\\...)
+    return spawn(`"${cli}"`, args, { cwd: root, shell: true });
+  }
+  return spawn(cli, args, { cwd: root });
+};
+
+/** 처음부터 shell 로 띄워야 하는가 */
+const needsShell = (cli) => process.platform === 'win32' && /\.(cmd|bat)$/i.test(cli);
+
+/** spawn 단계에서 난 오류인가 (실행조차 못 한 경우) */
+const isSpawnFailure = (code) => ['ENOENT', 'EINVAL', 'EACCES', 'UNKNOWN'].includes(code);
 
 /** 모델이 코드펜스나 잡담을 섞어 보내도 JSON만 뽑아낸다 */
 const extractJson = (text) => {
@@ -210,15 +252,51 @@ const buildAudio = async () => {
 /* ── 진행 상황 스트림 (SSE) ──────────────────────────────── */
 
 const streams = new Map(); // jobId → res
+/** 클라이언트가 아직 붙기 전에 끝난 작업의 결과를 잠깐 들고 있는다 */
+const pending = new Map(); // jobId → [{event, data}]
+
 const sendEvent = (jobId, event, data) => {
   const res = streams.get(jobId);
-  if (!res) return;
+  if (!res) {
+    // 아직 연결 전이면 모아뒀다가 연결되는 순간 흘려보낸다
+    if (!pending.has(jobId)) pending.set(jobId, []);
+    pending.get(jobId).push({ event, data });
+    setTimeout(() => pending.delete(jobId), 60_000);
+    return;
+  }
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 };
+
 const endStream = (jobId) => {
   const res = streams.get(jobId);
   if (res) res.end();
   streams.delete(jobId);
+};
+
+const openStream = (res, jobId, req) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('retry: 2000\n\n');
+  streams.set(jobId, res);
+
+  // 연결 전에 쌓인 이벤트가 있으면 지금 내보낸다
+  const queued = pending.get(jobId);
+  if (queued) {
+    pending.delete(jobId);
+    for (const { event, data } of queued) {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    }
+    if (queued.some((q) => q.event === 'done' || q.event === 'error')) {
+      res.end();
+      streams.delete(jobId);
+      return;
+    }
+  }
+  req.on('close', () => streams.delete(jobId));
 };
 
 /* ── 라우트 ──────────────────────────────────────────────── */
@@ -253,11 +331,18 @@ const routes = {
     json(res, 200, { prompt: buildPrompt(body) });
   },
 
-  /** Claude Code CLI 를 호출해 원문을 대본으로 바꾼다 */
+  /**
+   * Claude Code CLI 를 호출해 원문을 대본으로 바꾼다.
+   *
+   * 분석에 1~2분이 걸려서 HTTP 요청을 붙잡고 있으면 중간에 끊기기 쉽다.
+   * 그래서 렌더링과 같은 방식으로 jobId 를 먼저 돌려주고 진행 상황은 SSE 로 보낸다.
+   */
   'POST /api/analyze': async (req, res) => {
     const body = JSON.parse((await readBody(req)).toString('utf8'));
     if (!body.text?.trim()) return json(res, 400, { error: '원문이 비어 있습니다.' });
-    if (!hasClaudeCli()) {
+
+    const cli = findClaudeCli();
+    if (!cli) {
       return json(res, 503, {
         error: 'Claude Code CLI를 찾지 못했습니다. 수동 모드를 쓰세요.',
         manual: true,
@@ -267,34 +352,116 @@ const routes = {
     // 원문은 저장소에 올리지 않는 .source/ 에 둔다 (베낀 문장 검사용)
     writeFileSync(join(SOURCE_DIR, 'current.txt'), body.text, 'utf8');
 
-    const prompt = buildPrompt(body);
-    const child = spawn('claude', ['-p', '--output-format', 'text'], { cwd: root });
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (d) => (out += d.toString()));
-    child.stderr.on('data', (d) => (err += d.toString()));
-    child.stdin.write(prompt);
-    child.stdin.end();
+    const jobId = `a${Date.now()}`;
+    json(res, 200, { jobId });
 
-    const timer = setTimeout(() => child.kill(), 6 * 60 * 1000);
+    // 클라이언트가 SSE 에 붙을 시간을 준 뒤 시작한다
+    setTimeout(() => {
+      const prompt = buildPrompt(body);
+      console.log(`[분석] 시작 — 원문 ${body.text.length}자, 카드 ${body.cardCount ?? 7}장`);
 
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code !== 0) {
-        return json(res, 500, { error: `분석 실패 (code ${code})\n${err.slice(-600)}` });
-      }
-      try {
-        const script = extractJson(out);
-        saveScript(script);
-        json(res, 200, { script });
-      } catch (e) {
-        json(res, 500, { error: `대본 파싱 실패: ${e.message}`, raw: out.slice(0, 2000) });
-      }
-    });
-    child.on('error', (e) => {
-      clearTimeout(timer);
-      json(res, 500, { error: e.message });
-    });
+      const started = Date.now();
+      let settled = false;
+      let beat;
+      let timer;
+
+      const finish = (event, data) => {
+        if (settled) return; // error 와 close 가 둘 다 오는 경우가 있다
+        settled = true;
+        clearTimeout(timer);
+        clearInterval(beat);
+        sendEvent(jobId, event, data);
+        endStream(jobId);
+      };
+
+      beat = setInterval(() => {
+        sendEvent(jobId, 'progress', { elapsed: Math.round((Date.now() - started) / 1000) });
+      }, 2000);
+
+      /** shell 경유 여부를 바꿔가며 최대 두 번 시도한다 */
+      const attempt = (useShell) => {
+        let child;
+        try {
+          child = spawnClaude(cli, useShell);
+        } catch (e) {
+          return onSpawnFail(useShell, e.code ?? 'UNKNOWN', e.message);
+        }
+
+        let out = '';
+        let err = '';
+        let spawnFailed = false;
+
+        child.stdout.on('data', (d) => (out += d.toString()));
+        child.stderr.on('data', (d) => (err += d.toString()));
+
+        // 자식이 먼저 죽으면 stdin.write 가 EPIPE 를 던진다
+        child.stdin.on('error', () => {});
+        try {
+          child.stdin.write(prompt);
+          child.stdin.end();
+        } catch {
+          /* 아래 error/close 핸들러가 처리한다 */
+        }
+
+        timer = setTimeout(() => {
+          child.kill();
+          finish('error', {
+            message: '분석이 6분을 넘겨 중단했습니다. 원문을 줄여서 다시 시도해보세요.',
+          });
+        }, 6 * 60 * 1000);
+
+        child.on('error', (e) => {
+          if (isSpawnFailure(e.code)) {
+            spawnFailed = true;
+            return onSpawnFail(useShell, e.code, e.message);
+          }
+          console.error('[분석] 실행 오류:', e.message);
+          finish('error', { message: `claude 실행 오류: ${e.message}` });
+        });
+
+        child.on('close', (code) => {
+          if (spawnFailed || settled) return; // 이미 error 에서 처리됐다
+          if (code !== 0) {
+            console.error(`[분석] 실패 code=${code}`, err.slice(-400));
+            return finish('error', { message: `분석 실패 (code ${code})\n${err.slice(-400)}` });
+          }
+          try {
+            const script = extractJson(out);
+            if (!Array.isArray(script.cards) || !script.cards.length) {
+              throw new Error('cards 배열이 비어 있습니다.');
+            }
+            saveScript(script);
+            console.log(`[분석] 완료 — 카드 ${script.cards.length}장`);
+            finish('done', { script });
+          } catch (e) {
+            console.error('[분석] 파싱 실패:', e.message);
+            finish('error', { message: `대본 파싱 실패: ${e.message}` });
+          }
+        });
+      };
+
+      const onSpawnFail = (usedShell, code, message) => {
+        clearTimeout(timer);
+        if (!usedShell) {
+          // 윈도우의 claude.cmd 처럼 shell 을 거쳐야 실행되는 경우가 있다
+          console.warn(`[분석] 직접 실행 실패(${code}) — shell 로 다시 시도합니다`);
+          return attempt(true);
+        }
+        console.error('[분석] 실행 실패:', code, message);
+        finish('error', {
+          message:
+            `claude 실행 파일을 실행하지 못했습니다 (${code}).\n` +
+            `경로: ${cli}\n` +
+            '터미널에서 claude --version 이 되는지 확인하거나, 아래 수동 모드를 쓰세요.',
+        });
+      };
+
+      attempt(needsShell(cli));
+    }, 120);
+  },
+
+  'GET /api/analyze/stream': async (req, res, url) => {
+    openStream(res, url.searchParams.get('job'), req);
   },
 
   /** 수동 모드: 붙여넣은 JSON을 저장 */
@@ -477,15 +644,7 @@ const routes = {
   },
 
   'GET /api/render/stream': async (req, res, url) => {
-    const jobId = url.searchParams.get('job');
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    });
-    res.write('retry: 2000\n\n');
-    streams.set(jobId, res);
-    req.on('close', () => streams.delete(jobId));
+    openStream(res, url.searchParams.get('job'), req);
   },
 };
 
@@ -550,6 +709,20 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent) json(res, 500, { error: e.message });
     else res.end();
   }
+});
+
+/**
+ * 마지막 안전망.
+ * 이벤트 핸들러 안에서 터진 예외는 요청 단위 try/catch 로 잡히지 않아 프로세스를 죽인다.
+ * 서버가 죽으면 브라우저에는 "Failed to fetch" 만 보이고 원인을 알 수 없으므로,
+ * 여기서 로그만 남기고 계속 살아 있게 한다.
+ */
+process.on('uncaughtException', (e) => {
+  console.error('\n[서버 오류] 처리되지 않은 예외 — 서버는 계속 동작합니다:');
+  console.error(e);
+});
+process.on('unhandledRejection', (e) => {
+  console.error('\n[서버 오류] 처리되지 않은 거부:', e);
 });
 
 server.listen(PORT, () => {
