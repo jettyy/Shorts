@@ -39,10 +39,15 @@
 ## 🚀 이렇게 씁니다 — 브라우저 앱
 
 ```bash
+npm install   # 처음 한 번만 (필수)
 npm start
 ```
 
 브라우저에서 **http://localhost:4321** 을 열면 4단계 화면이 나옵니다.
+
+> ⚠️ **`npm install` 을 빼먹으면** 서버는 켜지고 대본까지는 만들어지지만,
+> 녹음 합치기와 영상 렌더링에서 실패합니다.
+> 그래서 서버가 켜질 때와 앱 첫 화면에서 설치가 덜 됐는지 먼저 알려줍니다.
 
 ### 1단계 · 원문 붙여넣기
 기사나 블로그 글을 통째로 붙여넣고, 출처(제목·매체·URL·확인 기준일)와
@@ -221,5 +226,14 @@ npm run render
 
 **포트 4321이 이미 쓰이고 있어요**
 ```bash
-PORT=5000 npm start
+PORT=5000 npm start          # macOS / Linux
+$env:PORT=5000; npm start    # Windows PowerShell
 ```
+
+**"설치가 덜 됐습니다" 빨간 안내가 떠요**
+→ `npm install` 을 아직 안 했거나 중간에 실패한 경우입니다.
+   터미널에서 `Ctrl+C` 로 서버를 끄고, 프로젝트 폴더에서 `npm install` 을 실행한 뒤
+   `npm start` 로 다시 켜주세요. 어떤 게 빠졌는지는 안내에 그대로 적혀 있습니다.
+
+**`npm error could not determine executable to run`**
+→ 같은 원인입니다(패키지 미설치). `npm install` 후 다시 시도하세요.

@@ -68,6 +68,21 @@ body {
 .status { font-size: 12.5px; color: var(--text-3); white-space: nowrap; }
 .status b { color: var(--good); }
 
+.install-warn {
+  max-width: 880px; margin: 22px auto -8px; padding: 18px 22px;
+  border-radius: var(--radius); font-size: 14px; line-height: 1.65;
+  border: 1px solid rgba(255, 122, 107, 0.45);
+  background: rgba(255, 122, 107, 0.09);
+  color: #ffc2b9;
+}
+.install-warn b { color: #fff; }
+.install-warn code {
+  display: inline-block; margin-top: 8px; padding: 7px 13px; border-radius: 8px;
+  background: rgba(0, 0, 0, 0.42); color: var(--gold-bright);
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px;
+}
+.install-warn ul { margin: 8px 0; padding-left: 20px; }
+
 /* ── 레이아웃 ───────────────────────────── */
 main { max-width: 880px; margin: 0 auto; padding: 34px 24px 120px; }
 .panel { animation: rise 0.28s ease; }

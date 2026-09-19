@@ -36,7 +36,26 @@ const SCRIPT_PATH = join(root, 'src', 'script.json');
 const SOURCE_DIR = join(root, '.source');
 
 const PORT = Number(process.env.PORT ?? 4321);
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
+/**
+ * Remotion CLI 진입점.
+ *
+ * `npx remotion` 을 쓰지 않는다. npx 는 로컬에 없으면 레지스트리에서 받으려다
+ * "could not determine executable to run" 같은 엉뚱한 오류를 내고,
+ * 윈도우에서는 npx.cmd 실행 문제까지 겹친다.
+ * 그냥 설치된 js 파일을 현재 node 로 직접 실행한다.
+ */
+const remotionCli = () => {
+  const entry = join(root, 'node_modules', '@remotion', 'cli', 'remotion-cli.js');
+  return existsSync(entry) ? entry : null;
+};
+
+/** remotion CLI 를 띄운다 (설치 안 돼 있으면 null) */
+const spawnRemotion = (args) => {
+  const entry = remotionCli();
+  if (!entry) return null;
+  return spawn(process.execPath, [entry, ...args], { cwd: root });
+};
 
 for (const dir of [CLIPS_DIR, AUDIO_DIR, OUTPUT_DIR, SOURCE_DIR]) mkdirSync(dir, { recursive: true });
 setupFonts({ silent: true });
@@ -74,9 +93,9 @@ const loadScript = () => (existsSync(SCRIPT_PATH) ? JSON.parse(readFileSync(SCRI
 const saveScript = (data) => writeFileSync(SCRIPT_PATH, JSON.stringify(data, null, 2) + '\n', 'utf8');
 
 /**
- * remotion에 딸려오는 ffmpeg/ffprobe를 쓴다 — 따로 설치할 게 없다.
- * `npx remotion ffmpeg` 는 호출마다 1.4초쯤 걸려서, 바이너리를 직접 찾아 쓴다.
- * 못 찾으면 npx 로 넘어간다.
+ * remotion 에 딸려오는 ffmpeg/ffprobe 를 쓴다 — 따로 설치할 게 없다.
+ * 플랫폼별 compositor 패키지 안에 바이너리가 들어 있다.
+ * (예: @remotion/compositor-darwin-arm64/ffmpeg)
  */
 const ffBinary = (() => {
   const cache = {};
@@ -95,7 +114,7 @@ const ffBinary = (() => {
         }
       }
     } catch {
-      /* node_modules 구조가 다르면 npx 로 */
+      /* node_modules 가 없으면 아래에서 안내 메시지를 낸다 */
     }
     cache[tool] = found;
     return found;
@@ -105,9 +124,14 @@ const ffBinary = (() => {
 const runFfmpeg = (args, tool = 'ffmpeg') =>
   new Promise((ok, fail) => {
     const bin = ffBinary(tool);
-    const p = bin
-      ? spawn(bin, args, { cwd: root })
-      : spawn(npx, ['remotion', tool, ...args], { cwd: root });
+    if (!bin) {
+      return fail(
+        new Error(
+          `${tool} 를 찾지 못했습니다. 프로젝트 폴더에서 npm install 을 실행한 뒤 다시 시도해주세요.`,
+        ),
+      );
+    }
+    const p = spawn(bin, args, { cwd: root });
     let err = '';
     let out = '';
     p.stderr.on('data', (d) => (err += d.toString()));
@@ -162,6 +186,35 @@ const findClaudeCli = () => {
 };
 
 const hasClaudeCli = () => Boolean(findClaudeCli());
+
+const INSTALL_HINT =
+  '필요한 패키지가 설치돼 있지 않습니다.\n' +
+  '프로젝트 폴더에서 npm install 을 실행한 뒤 서버를 다시 켜주세요.';
+
+/**
+ * 설치 상태 점검.
+ *
+ * 이 서버는 node 기본 모듈만 쓰기 때문에 npm install 을 안 해도 그냥 켜진다.
+ * 그래서 아무 문제 없어 보이다가 렌더링·녹음 합치기 단계에서야 터진다.
+ * 시작할 때, 그리고 /api/status 에서 미리 확인해 알려준다.
+ */
+const checkInstall = () => {
+  const missing = [];
+  if (!existsSync(join(root, 'node_modules'))) {
+    missing.push('node_modules (npm install 을 아직 실행하지 않았습니다)');
+    return { ok: false, missing };
+  }
+  if (!remotionCli()) missing.push('@remotion/cli (영상 렌더링)');
+  if (!ffBinary('ffmpeg') || !ffBinary('ffprobe')) {
+    missing.push(`@remotion/compositor-* (ffmpeg — ${process.platform}/${process.arch} 용)`);
+  }
+  if (!existsSync(join(root, 'public', 'fonts', 'Pretendard-Bold.woff2'))) {
+    missing.push('public/fonts (한글 폰트 — node scripts/setup-fonts.mjs)');
+  }
+  return { ok: missing.length === 0, missing };
+};
+
+
 
 /**
  * claude CLI 를 띄운다.
@@ -308,6 +361,7 @@ const routes = {
       ? readdirSync(CLIPS_DIR).filter((f) => f.endsWith('.webm'))
       : [];
     json(res, 200, {
+      install: checkInstall(),
       claudeCli: hasClaudeCli(),
       hasScript: Boolean(script),
       cardCount: script?.cards?.length ?? 0,
@@ -492,17 +546,18 @@ const routes = {
 
     const file = `preview-${index}-${Date.now()}.png`;
     const browser = findBrowser();
-    const args = [
-      'remotion',
+    const p = spawnRemotion([
       'still',
       'CardNews',
       join('app', 'data', file),
       `--frame=${frame}`,
       ...(browser ? [`--browser-executable=${browser}`] : []),
-    ];
-    const p = spawn(npx, args, { cwd: root });
+    ]);
+    if (!p) return json(res, 500, { error: INSTALL_HINT });
+
     let err = '';
     p.stderr.on('data', (d) => (err += d.toString()));
+    p.on('error', (e) => json(res, 500, { error: e.message }));
     p.on('close', (code) => {
       if (code !== 0) return json(res, 500, { error: err.slice(-600) });
       json(res, 200, { url: `/data/${file}` });
@@ -609,14 +664,18 @@ const routes = {
       const fileName = `쇼츠_${slug || '무제'}_${stamp}.mp4`;
       const browser = findBrowser();
 
-      const p = spawn(
-        npx,
-        [
-          'remotion', 'render', 'CardNews', join('output', fileName),
-          ...(browser ? [`--browser-executable=${browser}`] : []),
-        ],
-        { cwd: root },
-      );
+      const p = spawnRemotion([
+        'render', 'CardNews', join('output', fileName),
+        ...(browser ? [`--browser-executable=${browser}`] : []),
+      ]);
+      if (!p) {
+        sendEvent(jobId, 'error', { message: INSTALL_HINT });
+        return endStream(jobId);
+      }
+      p.on('error', (e) => {
+        sendEvent(jobId, 'error', { message: `렌더링 실행 실패: ${e.message}` });
+        endStream(jobId);
+      });
 
       const onData = (d) => {
         const text = d.toString();
@@ -733,4 +792,14 @@ server.listen(PORT, () => {
   console.log(`      대본 생성: ${hasClaudeCli() ? 'Claude Code CLI 사용 가능' : '수동 모드 (CLI 없음)'}`);
   console.log('      종료: Ctrl+C');
   console.log('');
+
+  const install = checkInstall();
+  if (!install.ok) {
+    console.log('  ⚠️  설치가 덜 됐습니다 — 영상 렌더링과 녹음 합치기가 동작하지 않습니다.');
+    for (const m of install.missing) console.log(`      · 없음: ${m}`);
+    console.log('');
+    console.log('      해결: 이 폴더에서 아래를 실행한 뒤 npm start 를 다시 하세요.');
+    console.log('        npm install');
+    console.log('');
+  }
 });

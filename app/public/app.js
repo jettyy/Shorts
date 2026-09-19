@@ -539,6 +539,17 @@ $('#steps').addEventListener('click', (e) => {
       : '대본 생성 <span style="color:#ffd874">수동 모드</span>';
     if (!st.claudeCli) $('#manualBox').classList.remove('hidden');
 
+    // 설치가 덜 됐으면 3단계에서 터지기 전에 미리 알린다
+    if (st.install && !st.install.ok) {
+      $('#installWarn').innerHTML =
+        '<b>설치가 덜 됐습니다.</b> 대본까지는 만들 수 있지만, ' +
+        '녹음 합치기와 영상 렌더링이 동작하지 않습니다.' +
+        `<ul>${st.install.missing.map((m) => `<li>없음: ${escapeHtml(m)}</li>`).join('')}</ul>` +
+        '터미널에서 <code>Ctrl+C</code> 로 서버를 끄고, 프로젝트 폴더에서 ' +
+        '<code>npm install</code> 을 실행한 뒤 <code>npm start</code> 로 다시 켜주세요.';
+      $('#installWarn').classList.remove('hidden');
+    }
+
     if (st.hasScript) {
       state.script = await api('/api/script');
       if (state.script?.cards?.length) {
