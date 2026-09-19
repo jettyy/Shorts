@@ -314,6 +314,7 @@ function renderRecorders() {
         </div>
         <div class="rec-screen">화면: ${escapeHtml((c.title ?? '').replace(/\n/g, ' / '))}${c.visual ? ` — [${c.visual.kind}]` : ''}</div>
         <div class="rec-script">${escapeHtml(c.narration ?? '(내레이션 없음)')}</div>
+        <div class="mic-error hidden"></div>
         <div class="rec-actions">
           <button class="primary rec-btn" data-i="${i}">${clip ? '다시 녹음' : '● 녹음 시작'}</button>
           ${clip ? `<audio controls src="/clip/${i}?t=${Date.now()}"></audio>
@@ -352,13 +353,82 @@ $('#recList').addEventListener('click', async (e) => {
   startRecording(i, recBtn);
 });
 
+/**
+ * 마이크를 열지 못한 진짜 이유를 알려준다.
+ *
+ * 권한을 이미 허용했는데도 실패하는 경우가 많다.
+ * (윈도우 시스템 설정에서 막힘 / 다른 앱이 마이크를 점유 / 장치 없음)
+ * 전부 "권한을 허용하세요" 로 뭉뚱그리면 원인을 찾을 수 없다.
+ */
+const micErrorMessage = (err) => {
+  const name = err?.name ?? '';
+  switch (name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return (
+        '브라우저가 마이크 접근을 막았습니다.\n' +
+        '주소창 왼쪽 자물쇠(또는 마이크 아이콘) → 마이크 → 허용으로 바꾼 뒤,\n' +
+        '페이지를 새로고침하고 다시 눌러주세요.'
+      );
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return (
+        '마이크 장치를 찾지 못했습니다.\n' +
+        '마이크가 연결돼 있는지, 윈도우 소리 설정에서 입력 장치로 잡히는지 확인해주세요.'
+      );
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return (
+        '마이크를 열 수 없습니다. 권한 문제가 아니라 장치를 못 쓰는 상태입니다.\n' +
+        '· 윈도우: 설정 → 개인 정보 및 보안 → 마이크 →\n' +
+        '  "마이크 액세스" 와 "앱이 마이크에 액세스하도록 허용" 을 켜주세요\n' +
+        '· 줌·팀즈·녹음기 등 마이크를 쓰는 다른 프로그램을 모두 종료해주세요\n' +
+        '· 그래도 안 되면 브라우저를 완전히 껐다 켜주세요'
+      );
+    case 'OverconstrainedError':
+      return '이 마이크가 요청한 설정을 지원하지 않습니다. 다른 입력 장치를 선택해보세요.';
+    case 'SecurityError':
+      return 'localhost 가 아닌 주소로 접속하면 녹음이 막힙니다. http://localhost:4321 로 열어주세요.';
+    default:
+      return `마이크를 열지 못했습니다.\n(${name || '알 수 없는 오류'}: ${err?.message ?? ''})`;
+  }
+};
+
+/** 녹음 카드 안에 오류를 계속 띄워둔다 (토스트는 금방 사라져서 읽기 어렵다) */
+const showMicError = (index, text) => {
+  const slot = document.querySelector(`.rec[data-i="${index}"] .mic-error`);
+  if (slot) {
+    slot.textContent = text;
+    slot.classList.remove('hidden');
+  }
+  toast(text.split('\n')[0], true);
+};
+
 async function startRecording(index, btn) {
+  document.querySelector(`.rec[data-i="${index}"] .mic-error`)?.classList.add('hidden');
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return showMicError(
+      index,
+      '이 브라우저에서는 녹음을 지원하지 않습니다.\nChrome, Edge, Safari 최신 버전에서 열어주세요.',
+    );
+  }
+  if (typeof MediaRecorder === 'undefined') {
+    return showMicError(index, '이 브라우저는 MediaRecorder 를 지원하지 않습니다.');
+  }
+
+  // 세밀한 옵션이 장치와 안 맞아 실패하는 경우가 있어, 실패하면 기본 설정으로 한 번 더 시도한다
   try {
     state.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-  } catch {
-    return toast('마이크 권한이 필요합니다. 브라우저 주소창의 자물쇠에서 허용해주세요.', true);
+  } catch (first) {
+    try {
+      state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      console.error('[마이크] 열기 실패', err);
+      return showMicError(index, micErrorMessage(err));
+    }
   }
 
   state.chunks = [];
