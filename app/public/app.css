@@ -18,6 +18,9 @@
 
 * { box-sizing: border-box; }
 
+/* 페이지가 길어져도 배경이 끊기지 않게 (body 배경은 fixed 라 뷰포트만 덮는다) */
+html { background: var(--navy-0); }
+
 body {
   margin: 0;
   background:
@@ -286,3 +289,57 @@ button, .primary {
   .grid2 { grid-template-columns: 1fr; }
   main { padding: 24px 16px 100px; }
 }
+
+/* ── 업로드 (4단계) ─────────────────────── */
+.publish { margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--line); }
+.pub-head { font-size: 20px; margin: 0 0 18px; }
+
+.copy-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 30px; }
+.copy-item {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035); overflow: hidden;
+}
+.copy-top {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border-bottom: 1px solid var(--line); font-size: 13.5px; font-weight: 800;
+}
+.copy-top .spacer { margin-left: auto; }
+.copy-body {
+  padding: 14px 16px; font-size: 13.5px; line-height: 1.75; color: var(--text-2);
+  white-space: pre-wrap; word-break: break-word; max-height: 190px; overflow-y: auto;
+}
+
+.yt {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035); padding: 20px;
+}
+.yt-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.yt-head h4 { margin: 0; font-size: 16.5px; }
+.yt-state { margin-left: auto; font-size: 12.5px; color: var(--text-3); }
+.yt-state.on { color: var(--good); }
+.yt label { margin-top: 14px; }
+.hint { font-size: 13px; color: var(--text-3); line-height: 1.75; margin: 0 0 12px; }
+.hint a, .warn-inline a { color: var(--gold-bright); }
+.hint b { color: var(--text-2); }
+
+.warn-inline {
+  padding: 14px 16px; border-radius: 11px; margin-bottom: 4px;
+  border: 1px solid rgba(255, 122, 107, 0.4); background: rgba(255, 122, 107, 0.08);
+  color: #ffc2b9; font-size: 13px; line-height: 1.75;
+}
+.warn-inline b { color: #fff; }
+
+.mode-row { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; }
+.radio {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 14px; font-weight: 700; color: var(--text-2); margin: 0;
+}
+.radio input { width: auto; margin: 0; accent-color: var(--gold); }
+
+.yt-result {
+  margin-top: 16px; padding: 16px; border-radius: 11px;
+  border: 1px solid rgba(63, 214, 168, 0.4); background: rgba(63, 214, 168, 0.07);
+  font-size: 14px; line-height: 1.8;
+}
+.yt-result a { color: var(--gold-bright); }
+.yt-result.err { border-color: rgba(255, 122, 107, 0.45); background: rgba(255, 122, 107, 0.08); color: #ffc2b9; }

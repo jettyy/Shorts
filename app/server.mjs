@@ -25,6 +25,8 @@ import { homedir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './prompt.mjs';
+import { withPublishCopy } from './publish-copy.mjs';
+import { createYouTube } from './youtube.mjs';
 import { findBrowser } from '../scripts/find-browser.mjs';
 import { setupFonts } from '../scripts/setup-fonts.mjs';
 
@@ -59,6 +61,7 @@ const spawnRemotion = (args) => {
 };
 
 for (const dir of [CLIPS_DIR, AUDIO_DIR, OUTPUT_DIR, SOURCE_DIR]) mkdirSync(dir, { recursive: true });
+const youtube = createYouTube(join(root, 'app', 'data'));
 setupFonts({ silent: true });
 
 /* ── 유틸 ────────────────────────────────────────────────── */
@@ -401,6 +404,9 @@ const buildAudio = async () => {
 };
 
 /* ── 진행 상황 스트림 (SSE) ──────────────────────────────── */
+
+/** 가장 최근에 렌더링된 파일 이름 — 업로드 기본값으로 쓴다 */
+let lastRendered = null;
 
 const streams = new Map(); // jobId → res
 /** 클라이언트가 아직 붙기 전에 끝난 작업의 결과를 잠깐 들고 있는다 */
@@ -795,6 +801,7 @@ const routes = {
 
       p.on('close', (code) => {
         if (code === 0) {
+          lastRendered = fileName;
           sendEvent(jobId, 'done', { file: fileName, url: `/output/${encodeURIComponent(fileName)}` });
         } else {
           sendEvent(jobId, 'error', { message: `렌더링 실패 (code ${code})` });
@@ -802,6 +809,131 @@ const routes = {
         endStream(jobId);
       });
     }, 30);
+  },
+
+  /** 플랫폼별 업로드 문구 */
+  'GET /api/publish/copy': async (req, res) => {
+    const script = loadScript();
+    if (!script) return json(res, 400, { error: '대본이 없습니다.' });
+    json(res, 200, { copy: withPublishCopy(script) });
+  },
+
+  /** 올릴 수 있는 완성 영상 목록 (최신순) */
+  'GET /api/videos': async (req, res) => {
+    const files = existsSync(OUTPUT_DIR)
+      ? readdirSync(OUTPUT_DIR)
+          .filter((f) => f.toLowerCase().endsWith('.mp4'))
+          .map((f) => ({ file: f, mtime: statSync(join(OUTPUT_DIR, f)).mtimeMs }))
+          .sort((a, b) => b.mtime - a.mtime)
+      : [];
+    json(res, 200, { videos: files.map((f) => f.file), latest: lastRendered ?? files[0]?.file ?? null });
+  },
+
+  /* ── 유튜브 ─────────────────────────────────────────── */
+
+  'GET /api/youtube/status': async (req, res) => json(res, 200, youtube.status()),
+
+  'POST /api/youtube/client': async (req, res) => {
+    try {
+      youtube.setClient(JSON.parse((await readBody(req)).toString('utf8')));
+      json(res, 200, youtube.status());
+    } catch (e) {
+      json(res, 400, { error: e.message });
+    }
+  },
+
+  'POST /api/youtube/disconnect': async (req, res) => {
+    youtube.disconnect();
+    json(res, 200, youtube.status());
+  },
+
+  /** 구글 로그인 화면으로 보낼 주소 */
+  'GET /api/youtube/auth-url': async (req, res, url) => {
+    try {
+      const redirectUri = `http://localhost:${PORT}/api/youtube/callback`;
+      json(res, 200, { url: youtube.authUrl(redirectUri), redirectUri });
+    } catch (e) {
+      json(res, 400, { error: e.message });
+    }
+  },
+
+  /** 구글이 되돌려보내는 곳 */
+  'GET /api/youtube/callback': async (req, res, url) => {
+    const code = url.searchParams.get('code');
+    const oauthError = url.searchParams.get('error');
+    const page = (title, body) =>
+      `<!doctype html><meta charset="utf-8"><title>${title}</title>` +
+      `<body style="font-family:system-ui,sans-serif;background:#0c152c;color:#f2f5fb;` +
+      `display:grid;place-items:center;height:100vh;margin:0;text-align:center;line-height:1.7">` +
+      `<div><h2 style="margin:0 0 10px">${title}</h2><p style="opacity:.75;white-space:pre-line">${body}</p>` +
+      `<p style="margin-top:22px"><a href="/" style="color:#ffd874">앱으로 돌아가기</a></p></div>`;
+
+    if (oauthError) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(page('연결이 취소됐습니다', oauthError));
+    }
+    if (!code) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(page('잘못된 요청입니다', 'code 가 없습니다.'));
+    }
+    try {
+      const st = await youtube.exchangeCode(code);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(
+        page(
+          '유튜브 계정이 연결됐습니다',
+          `${st.channelTitle ? `채널: ${st.channelTitle}\n` : ''}이 창을 닫고 앱으로 돌아가세요.`,
+        ),
+      );
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(page('연결에 실패했습니다', e.message));
+    }
+  },
+
+  /** 업로드 — 진행률은 SSE 로 */
+  'POST /api/youtube/upload': async (req, res) => {
+    const body = JSON.parse((await readBody(req)).toString('utf8'));
+    const fileName = body.file ?? lastRendered;
+    if (!fileName) return json(res, 400, { error: '업로드할 영상이 없습니다. 먼저 렌더링해주세요.' });
+
+    const filePath = join(OUTPUT_DIR, fileName);
+    if (!existsSync(filePath)) return json(res, 400, { error: `영상을 찾지 못했습니다: ${fileName}` });
+
+    if (body.mode === 'schedule') {
+      const at = new Date(body.publishAt ?? '');
+      if (Number.isNaN(at.getTime())) return json(res, 400, { error: '예약 시각이 올바르지 않습니다.' });
+      if (at.getTime() < Date.now() + 60_000) {
+        return json(res, 400, { error: '예약 시각은 지금보다 최소 1분 뒤여야 합니다.' });
+      }
+      body.publishAt = at.toISOString();
+    }
+
+    const jobId = `y${Date.now()}`;
+    json(res, 200, { jobId });
+
+    setTimeout(async () => {
+      try {
+        console.log(`[유튜브] 업로드 시작 — ${fileName} (${body.mode})`);
+        const result = await youtube.upload({
+          filePath,
+          meta: body.meta ?? {},
+          mode: body.mode ?? 'private',
+          publishAt: body.publishAt,
+          onProgress: ({ sent, total }) => sendEvent(jobId, 'progress', { sent, total }),
+        });
+        console.log(`[유튜브] 완료 — ${result.url}`);
+        sendEvent(jobId, 'done', result);
+      } catch (e) {
+        console.error('[유튜브] 실패:', e.message);
+        sendEvent(jobId, 'error', { message: e.message });
+      }
+      endStream(jobId);
+    }, 120);
+  },
+
+  'GET /api/youtube/upload/stream': async (req, res, url) => {
+    openStream(res, url.searchParams.get('job'), req);
   },
 
   'GET /api/render/stream': async (req, res, url) => {

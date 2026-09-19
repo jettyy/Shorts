@@ -527,6 +527,15 @@ function renderFinal(build) {
     $('#audioPreview').classList.remove('hidden');
     $('#fullAudio').src = build.url;
   }
+
+  // 이미 만들어둔 영상이 있으면 업로드 섹션을 바로 연다
+  api('/api/videos')
+    .then(({ latest }) => {
+      if (!latest) return;
+      $('#publishBox').classList.remove('hidden');
+      return loadPublishCopy().then(() => refreshYt());
+    })
+    .catch(() => {});
 }
 
 $('#btnBack3').addEventListener('click', () => goStep(3));
@@ -557,6 +566,10 @@ $('#btnRender').addEventListener('click', async () => {
       $('#btnDownload').setAttribute('download', d.file);
       $('#btnRender').disabled = false;
       toast('영상이 완성됐습니다');
+      // 완성됐으니 업로드 섹션을 연다
+      $('#publishBox').classList.remove('hidden');
+      loadPublishCopy().catch((err) => toast(err.message, true));
+      refreshYt().catch(() => {});
     });
     es.addEventListener('error', (ev) => {
       es.close();
@@ -632,3 +645,204 @@ $('#steps').addEventListener('click', (e) => {
   }
   goStep(1);
 })();
+
+/* ── 업로드 (4단계) ──────────────────────────────────── */
+
+const PLATFORMS = [
+  { key: 'youtube', label: '유튜브', pick: (c) => `${c.youtube.title}\n\n${c.youtube.description}` },
+  { key: 'instagram', label: '인스타그램', pick: (c) => c.instagram.caption },
+  { key: 'threads', label: '쓰레드', pick: (c) => c.threads.text },
+  { key: 'facebook', label: '페이스북', pick: (c) => c.facebook.text },
+];
+
+let publishCopy = null;
+
+async function loadPublishCopy() {
+  const { copy } = await api('/api/publish/copy');
+  publishCopy = copy;
+
+  $('#copyList').innerHTML = PLATFORMS.map(
+    (p) => `
+      <div class="copy-item">
+        <div class="copy-top">
+          <span>${p.label}</span>
+          <span class="spacer"></span>
+          <button class="ghost small btn-copy" data-key="${p.key}">복사</button>
+        </div>
+        <div class="copy-body">${escapeHtml(p.pick(copy))}</div>
+      </div>`,
+  ).join('');
+
+  // 유튜브 입력란 채우기 (사용자가 고쳐도 됨)
+  $('#ytTitle').value = copy.youtube.title;
+  $('#ytDesc').value = copy.youtube.description;
+  $('#ytTags').value = (copy.youtube.tags ?? []).join(', ');
+}
+
+$('#copyList').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.btn-copy');
+  if (!btn || !publishCopy) return;
+  const platform = PLATFORMS.find((p) => p.key === btn.dataset.key);
+  try {
+    await navigator.clipboard.writeText(platform.pick(publishCopy));
+    btn.textContent = '복사됨';
+    setTimeout(() => (btn.textContent = '복사'), 1600);
+  } catch {
+    toast('복사에 실패했습니다. 본문을 직접 선택해 복사해주세요.', true);
+  }
+});
+
+/** 유튜브 연결 상태에 따라 세 단계 중 하나만 보여준다 */
+function renderYtState(st) {
+  const setup = !st.hasClient;
+  const connect = st.hasClient && !st.connected;
+  const ready = st.connected;
+
+  $('#ytSetup').classList.toggle('hidden', !setup);
+  $('#ytConnect').classList.toggle('hidden', !connect);
+  $('#ytUpload').classList.toggle('hidden', !ready);
+
+  const state = $('#ytState');
+  state.classList.toggle('on', ready);
+  state.textContent = ready
+    ? `연결됨${st.channelTitle ? ` · ${st.channelTitle}` : ''}`
+    : connect
+      ? '계정 연결이 필요합니다'
+      : 'OAuth 클라이언트 등록이 필요합니다';
+}
+
+const refreshYt = async () => renderYtState(await api('/api/youtube/status'));
+
+$('#btnYtSaveClient').addEventListener('click', async () => {
+  try {
+    const st = await api('/api/youtube/client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: $('#ytClientId').value,
+        clientSecret: $('#ytClientSecret').value,
+      }),
+    });
+    renderYtState(st);
+    toast('저장했습니다. 이제 구글 계정을 연결해주세요.');
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+$('#btnYtConnect').addEventListener('click', async () => {
+  try {
+    const { url } = await api('/api/youtube/auth-url');
+    window.open(url, '_blank', 'noopener');
+    toast('새 창에서 로그인한 뒤 돌아와 주세요.');
+    // 돌아왔을 때 자동으로 상태를 갱신한다
+    const onFocus = async () => {
+      await refreshYt();
+      window.removeEventListener('focus', onFocus);
+    };
+    window.addEventListener('focus', onFocus);
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+$('#btnYtReset').addEventListener('click', async () => {
+  await api('/api/youtube/disconnect', { method: 'POST' });
+  $('#ytSetup').classList.remove('hidden');
+  $('#ytConnect').classList.add('hidden');
+});
+
+$('#btnYtDisconnect').addEventListener('click', async () => {
+  renderYtState(await api('/api/youtube/disconnect', { method: 'POST' }));
+  toast('연결을 해제했습니다.');
+});
+
+// 예약 발행을 고르면 시각 입력을 보여준다
+document.querySelectorAll('input[name="ytMode"]').forEach((r) =>
+  r.addEventListener('change', () => {
+    const schedule = document.querySelector('input[name="ytMode"]:checked').value === 'schedule';
+    $('#ytWhenRow').classList.toggle('hidden', !schedule);
+    if (schedule && !$('#ytWhen').value) {
+      // 기본값: 내일 오후 7시
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(19, 0, 0, 0);
+      $('#ytWhen').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+    }
+  }),
+);
+
+$('#btnYtUpload').addEventListener('click', async () => {
+  const mode = document.querySelector('input[name="ytMode"]:checked').value;
+  const when = $('#ytWhen').value;
+  if (mode === 'schedule' && !when) return toast('예약 시각을 입력해주세요.', true);
+
+  const btn = $('#btnYtUpload');
+  btn.disabled = true;
+  $('#ytResult').classList.add('hidden');
+  $('#ytProgressBox').classList.remove('hidden');
+  $('#ytPhase').textContent = '업로드 준비 중…';
+  $('#ytBar').style.width = '0%';
+
+  const showYtError = (msg) => {
+    btn.disabled = false;
+    $('#ytProgressBox').classList.add('hidden');
+    const box = $('#ytResult');
+    box.className = 'yt-result err';
+    box.textContent = msg;
+    box.classList.remove('hidden');
+  };
+
+  try {
+    const { jobId } = await api('/api/youtube/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode,
+        publishAt: mode === 'schedule' ? new Date(when).toISOString() : undefined,
+        meta: {
+          title: $('#ytTitle').value.trim(),
+          description: $('#ytDesc').value,
+          tags: $('#ytTags').value.split(',').map((t) => t.trim()).filter(Boolean),
+        },
+      }),
+    });
+
+    const es = new EventSource(`/api/youtube/upload/stream?job=${jobId}`);
+    es.addEventListener('progress', (ev) => {
+      const { sent, total } = JSON.parse(ev.data);
+      const pct = (sent / total) * 100;
+      $('#ytPhase').textContent = `업로드 중 — ${(sent / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB`;
+      $('#ytBar').style.width = `${pct}%`;
+    });
+    es.addEventListener('done', (ev) => {
+      es.close();
+      const r = JSON.parse(ev.data);
+      btn.disabled = false;
+      $('#ytProgressBox').classList.add('hidden');
+      const box = $('#ytResult');
+      box.className = 'yt-result';
+      box.innerHTML =
+        `<b>올라갔습니다.</b> 상태: ${r.privacyStatus}` +
+        (r.publishAt ? ` · 공개 예정 ${new Date(r.publishAt).toLocaleString('ko-KR')}` : '') +
+        `<br><a href="${r.url}" target="_blank" rel="noopener">영상 보기</a> · ` +
+        `<a href="${r.studioUrl}" target="_blank" rel="noopener">스튜디오에서 수정</a>`;
+      box.classList.remove('hidden');
+      toast('유튜브 업로드 완료');
+    });
+    es.addEventListener('error', (ev) => {
+      es.close();
+      let msg = '업로드에 실패했습니다.';
+      try {
+        msg = JSON.parse(ev.data).message;
+      } catch {
+        msg = '업로드 중 서버와의 연결이 끊겼습니다.';
+      }
+      showYtError(msg);
+    });
+  } catch (e) {
+    showYtError(e.message);
+  }
+});

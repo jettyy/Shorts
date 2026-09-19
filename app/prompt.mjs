@@ -65,9 +65,26 @@ example→calc·bar / caveat→checklist(ok:false 위주) / conclusion→timelin
 # durationSec
 narration 공백 제외 글자 수 ÷ 5.2 + 0.7, 최소 2.5. 소수점 첫째 자리.
 
+# publish — 업로드용 문구 (반드시 포함)
+영상과 함께 각 플랫폼에 올릴 문구를 같이 만들어라.
+- youtube.title: 60자 이내. 검색될 만한 핵심어를 앞에 두되 낚시성 과장은 쓰지 마라.
+- youtube.description: 3~5줄. 첫 줄은 영상 핵심 한 문장, 그 다음 카드 내용 요약,
+  마지막에 출처와 확인 기준일. #쇼츠 같은 태그 2~3개를 맨 끝에.
+- youtube.tags: 5~8개 문자열 배열. # 없이 단어만.
+- instagram.caption: 첫 줄이 훅. 3~4줄. 끝에 해시태그 8~12개를 줄바꿈 후 한 줄로.
+- threads.text: 400자 이내. 인스타보다 담백하게, 해시태그는 2개 이하.
+- facebook.text: 3~4줄. 출처를 문장으로 밝혀라.
+모든 문구에 원문 문장을 그대로 옮기지 마라. 확인 기준일을 반드시 포함해라.
+
 # 출력 형식 (이 구조 그대로)
 {
   "topic": "파일명에 쓸 짧은 주제 (10자 이내)",
+  "publish": {
+    "youtube": { "title": "...", "description": "...", "tags": ["...", "..."] },
+    "instagram": { "caption": "..." },
+    "threads": { "text": "..." },
+    "facebook": { "text": "..." }
+  },
   "accent": "${accent}",
   "source": ${JSON.stringify(source)},
   "cards": [

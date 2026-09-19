@@ -145,6 +145,80 @@
         <button class="ghost" id="btnRestart">새 영상 만들기</button>
       </div>
     </div>
+
+    <!-- ── 업로드 ── -->
+    <div class="publish hidden" id="publishBox">
+      <h3 class="pub-head">올리기</h3>
+
+      <!-- 플랫폼별 문구 -->
+      <div class="copy-list" id="copyList"></div>
+
+      <!-- 유튜브 -->
+      <div class="yt">
+        <div class="yt-head">
+          <h4>유튜브에 바로 올리기</h4>
+          <span class="yt-state" id="ytState">확인 중…</span>
+        </div>
+
+        <!-- 1) OAuth 클라이언트 등록 -->
+        <div class="yt-setup" id="ytSetup">
+          <p class="hint">
+            유튜브 API로 올리려면 본인 구글 계정의 OAuth 클라이언트가 한 번 필요합니다.
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
+            에서 <b>사용자 인증 정보 → OAuth 클라이언트 ID → 데스크톱 앱</b>으로 만들고,
+            <b>YouTube Data API v3</b>를 사용 설정한 뒤 아래에 붙여넣으세요.
+          </p>
+          <div class="grid2">
+            <label>클라이언트 ID <input id="ytClientId" placeholder="...apps.googleusercontent.com" /></label>
+            <label>클라이언트 보안 비밀 <input id="ytClientSecret" type="password" placeholder="GOCSPX-..." /></label>
+          </div>
+          <div class="actions">
+            <button class="ghost" id="btnYtSaveClient">저장</button>
+          </div>
+        </div>
+
+        <!-- 2) 계정 연결 -->
+        <div class="yt-connect hidden" id="ytConnect">
+          <div class="actions">
+            <button class="primary" id="btnYtConnect">구글 계정 연결</button>
+            <button class="ghost small" id="btnYtReset">클라이언트 다시 입력</button>
+          </div>
+          <div class="hint">새 창에서 구글 로그인 후, 이 화면으로 돌아와 주세요.</div>
+        </div>
+
+        <!-- 3) 업로드 -->
+        <div class="yt-upload hidden" id="ytUpload">
+          <div class="warn-inline">
+            ⚠️ 구글 API 심사를 받지 않은 프로젝트로 올린 영상은 <b>강제로 비공개</b>가 되고,
+            나중에 수동으로도 공개로 바꿀 수 없습니다. 공개로 올리려면 먼저
+            <a href="https://support.google.com/youtube/contact/yt_api_form" target="_blank" rel="noopener">API 감사</a>를
+            통과해야 합니다. 심사 전이라면 <b>비공개</b>로 올린 뒤 유튜브 스튜디오에서 다시 올리는 게 안전합니다.
+          </div>
+
+          <label>제목 <input id="ytTitle" maxlength="100" /></label>
+          <label>설명 <textarea id="ytDesc" rows="7"></textarea></label>
+          <label>태그 (쉼표로 구분) <input id="ytTags" /></label>
+
+          <div class="mode-row">
+            <label class="radio"><input type="radio" name="ytMode" value="private" checked /> 비공개로 올리기</label>
+            <label class="radio"><input type="radio" name="ytMode" value="schedule" /> 예약 발행</label>
+            <label class="radio"><input type="radio" name="ytMode" value="public" /> 바로 공개</label>
+          </div>
+          <label class="hidden" id="ytWhenRow">공개 시각 <input id="ytWhen" type="datetime-local" /></label>
+
+          <div class="actions">
+            <button class="primary big" id="btnYtUpload">유튜브에 올리기</button>
+            <button class="ghost small" id="btnYtDisconnect">계정 연결 해제</button>
+          </div>
+
+          <div class="render hidden" id="ytProgressBox">
+            <div class="phase" id="ytPhase">업로드 준비 중…</div>
+            <div class="bar"><div id="ytBar"></div></div>
+          </div>
+          <div class="yt-result hidden" id="ytResult"></div>
+        </div>
+      </div>
+    </div>
   </section>
 </main>
 

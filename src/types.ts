@@ -148,6 +148,14 @@ export type SourceInfo = {
 /** 영상별 색 테마 키 — 주제마다 바꿔서 영상끼리 구분되게 한다 */
 export type AccentKey = 'gold' | 'mint' | 'coral' | 'violet' | 'ice';
 
+/** 플랫폼별 업로드 문구 */
+export type PublishCopy = {
+  youtube?: { title?: string; description?: string; tags?: string[] };
+  instagram?: { caption?: string };
+  threads?: { text?: string };
+  facebook?: { text?: string };
+};
+
 export type ScriptData = {
   topic: string;
   source: SourceInfo;
@@ -158,5 +166,7 @@ export type ScriptData = {
    * 예: "audio/20260919.mp3" → public/audio/20260919.mp3
    */
   narrationAudio?: string;
+  /** 업로드용 문구 (없으면 서버가 대본에서 자동으로 만든다) */
+  publish?: PublishCopy;
   cards: Card[];
 };

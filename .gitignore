@@ -11,3 +11,6 @@ public/fonts/
 public/audio/
 # UI 작업 파일 (녹음 원본, 미리보기 이미지)
 app/data/
+
+# 유튜브 OAuth 클라이언트/토큰 (절대 저장소에 올리지 않는다)
+app/data/youtube.json
