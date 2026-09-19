@@ -57,8 +57,13 @@ export const wrapTitle = (title: string, maxEm = 15): string[] => {
  * 줄 목록이 가로 폭 안에 들어오도록 폰트 크기를 계산한다.
  * 줄 수가 많아질수록 살짝 더 줄여서 세로로도 안정적으로 앉게 한다.
  */
-export const fitFontSize = (lines: string[], isHook: boolean): number => {
-  const max = isHook ? TYPE.hookTitleMax : TYPE.titleMax;
+export const fitFontSize = (
+  lines: string[],
+  isHook: boolean,
+  hasVisual = false,
+): number => {
+  // 도표가 같이 들어가는 카드는 제목을 작게 잡는다 — 주인공은 도표다.
+  const max = hasVisual ? TYPE.titleWithVisualMax : isHook ? TYPE.hookTitleMax : TYPE.titleMax;
   const min = isHook ? TYPE.hookTitleMin : TYPE.titleMin;
   const widest = Math.max(...lines.map(measureEm), 1);
   const byWidth = CONTENT_WIDTH / widest;

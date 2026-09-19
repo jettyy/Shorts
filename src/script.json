@@ -1,39 +1,204 @@
 {
-  "topic": "모두의카드 포인트",
-  "source": "docs/sample-source.md (예시용 샘플 원문)",
+  "topic": "카드 포인트 현금화",
+  "accent": "gold",
+  "source": {
+    "title": "안 쓰는 카드 포인트, 이렇게 찾으세요",
+    "publisher": "예시용 샘플 원문",
+    "url": "https://example.com/sample-article",
+    "checkedOn": "2026-09-19"
+  },
   "cards": [
     {
-      "kicker": "몰라서 못 받는 돈",
-      "title": "안 쓰는 카드 포인트\n1년 뒤엔 그냥 사라집니다",
-      "isHook": true,
-      "durationSec": 4.6
+      "type": "hook",
+      "origin": "creator",
+      "kicker": "직접 계산해봤다",
+      "title": "카드 5장 쓰는 사람이\n1년에 버리는 돈",
+      "narration": "카드 다섯 장 쓰는 사람이 1년에 버리는 돈, 직접 계산해봤습니다.",
+      "durationSec": 6.1,
+      "visual": {
+        "kind": "stat",
+        "value": "23,000",
+        "unit": "원",
+        "caption": "카드사별 평균 잔여 포인트 × 5장 기준, 직접 산출"
+      }
     },
     {
-      "kicker": "얼마나 잠들어 있나",
-      "title": "1인당 평균 2만 원이\n카드사에 묶여 있다",
-      "durationSec": 4.4
+      "type": "fact",
+      "origin": "source",
+      "kicker": "확인된 사실",
+      "title": "포인트는 소멸 기한이 있다",
+      "body": "적립일 기준이라 카드마다 만료일이 다릅니다.",
+      "narration": "포인트엔 소멸 기한이 있습니다. 카드가 아니라 적립일 기준이라는 게 핵심입니다.",
+      "durationSec": 7.4,
+      "visual": {
+        "kind": "table",
+        "headers": [
+          "기본 포인트",
+          "제휴 포인트"
+        ],
+        "highlightCol": 1,
+        "rows": [
+          {
+            "label": "소멸 기한",
+            "a": "보통 5년",
+            "b": "1년도 있음"
+          },
+          {
+            "label": "기산 시점",
+            "a": "적립일",
+            "b": "적립일"
+          },
+          {
+            "label": "현금 전환",
+            "a": "대부분 가능",
+            "b": "제한 많음"
+          }
+        ]
+      }
     },
     {
-      "title": "포인트 1점은 현금 1원\n계좌로 바로 받을 수 있다",
-      "durationSec": 4.8
+      "type": "condition",
+      "origin": "creator",
+      "kicker": "대상 확인",
+      "title": "이 중 하나라도 해당되면\n확인해볼 가치가 있다",
+      "narration": "이 중 하나라도 해당되면 확인해볼 가치가 있습니다.",
+      "durationSec": 4.9,
+      "visual": {
+        "kind": "checklist",
+        "items": [
+          {
+            "text": "3년 넘게 쓴 카드가 있다",
+            "ok": true
+          },
+          {
+            "text": "해지하지 않고 안 쓰는 카드가 있다",
+            "ok": true
+          },
+          {
+            "text": "포인트로 결제해본 기억이 없다",
+            "ok": true
+          },
+          {
+            "text": "작년에 이미 전액 현금화했다",
+            "ok": false
+          }
+        ]
+      }
     },
     {
-      "title": "흩어진 카드사 포인트를\n한 화면에서 모아 본다",
-      "durationSec": 4.6
+      "type": "example",
+      "origin": "creator",
+      "kicker": "직접 계산",
+      "title": "제 카드로 실제 돌려봤습니다",
+      "narration": "말로만 하면 감이 안 오니까 제 카드로 실제 돌려봤습니다.",
+      "durationSec": 5.3,
+      "visual": {
+        "kind": "calc",
+        "lines": [
+          {
+            "label": "A카드 (주력 카드)",
+            "value": "12,400원"
+          },
+          {
+            "label": "B카드 (안 쓴 지 2년)",
+            "value": "6,850원"
+          },
+          {
+            "label": "C카드 (연회비만 나감)",
+            "value": "3,120원"
+          },
+          {
+            "label": "D카드 (제휴 포인트)",
+            "value": "전환 불가"
+          }
+        ],
+        "result": {
+          "label": "실제 입금액",
+          "value": "22,370원"
+        }
+      }
     },
     {
-      "kicker": "걸리는 시간",
-      "title": "조회부터 현금 전환까지\n3분이면 끝난다",
-      "durationSec": 4.3
+      "type": "fact",
+      "origin": "source",
+      "kicker": "절차",
+      "title": "조회부터 입금까지 이 순서",
+      "narration": "절차는 간단합니다. 인증하고, 조회되고, 계좌 넣으면 끝입니다.",
+      "durationSec": 6.3,
+      "visual": {
+        "kind": "flow",
+        "direction": "down",
+        "nodes": [
+          {
+            "label": "본인 인증",
+            "note": "휴대폰 또는 공동인증서"
+          },
+          {
+            "label": "카드사 포인트 일괄 조회",
+            "note": "가입한 카드가 자동으로 잡힘"
+          },
+          {
+            "label": "계좌 입력 후 신청",
+            "note": "1포인트 = 1원"
+          },
+          {
+            "label": "영업일 기준 입금",
+            "highlight": true
+          }
+        ]
+      }
     },
     {
-      "title": "매년 소멸되는 포인트만\n1000억 원이 넘는다",
-      "durationSec": 4.7
+      "type": "caveat",
+      "origin": "creator",
+      "kicker": "기사에 안 나온 것",
+      "title": "여기서 걸리는 경우가 많습니다",
+      "narration": "그런데 기사엔 잘 안 나오는 게 있습니다. 제가 직접 걸렸던 세 가지입니다.",
+      "durationSec": 6.7,
+      "visual": {
+        "kind": "checklist",
+        "items": [
+          {
+            "text": "제휴·항공 마일리지는 전환 대상이 아니다",
+            "ok": false
+          },
+          {
+            "text": "최소 전환 금액에 못 미치면 신청이 막힌다",
+            "ok": false
+          },
+          {
+            "text": "해지한 카드의 포인트는 조회되지 않는다",
+            "ok": false
+          }
+        ]
+      }
     },
     {
-      "title": "지금 내 포인트부터\n확인해보세요",
-      "isCta": true,
-      "durationSec": 3.9
+      "type": "conclusion",
+      "origin": "creator",
+      "kicker": "결론",
+      "title": "연말 전에 한 번,\n3분이면 끝납니다",
+      "narration": "금액은 작아도 이미 내 돈입니다. 연말 전에 한 번만 돌려보세요.",
+      "durationSec": 5.9,
+      "cta": "확인할 항목은 고정 댓글에 정리해뒀습니다",
+      "visual": {
+        "kind": "timeline",
+        "items": [
+          {
+            "when": "지금",
+            "label": "포인트 잔액 조회",
+            "highlight": true
+          },
+          {
+            "when": "같은 날",
+            "label": "현금 전환 신청"
+          },
+          {
+            "when": "연말",
+            "label": "미신청분 순차 소멸"
+          }
+        ]
+      }
     }
   ]
 }

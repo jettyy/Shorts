@@ -1,30 +1,36 @@
 import React from 'react';
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { COLORS, FONT_FAMILY, LAYOUT, TYPE } from '../theme';
+import { BASE, FONT_FAMILY, LAYOUT, TYPE, TYPE_LABEL, type Accent } from '../theme';
 import { fitFontSize, wrapTitle } from '../lib/text';
-import type { Card as CardData } from '../types';
+import { VisualBlock } from './visuals';
+import type { Card as CardData, SourceInfo } from '../types';
 
 type Props = {
   card: CardData;
   index: number;
   total: number;
+  accent: Accent;
+  source: SourceInfo;
 };
 
 /**
  * 카드 한 장.
- * 등장: 아래→위로 살짝 올라오며 페이드인 + 미세 확대.
- * 강조: 제목 아래 골드 언더라인이 왼쪽에서 오른쪽으로 슥 그려진다.
- * 퇴장: 마지막 순간에 살짝 위로 빠지며 페이드아웃.
+ *
+ * 구성: 상단(역할 라벨 + 카드 번호) → 제목 → 강조선 → **시각 자료** → (마지막 장) 출처·CTA
+ * 시각 자료가 있는 카드는 제목을 작게 잡는다. 주인공은 도표이지 글자가 아니다.
+ *
+ * 등장: 아래→위 + 페이드인 + 미세 확대, 퇴장: 위로 밀려나며 사라짐(다음 카드가 아래에서 올라온다)
  */
-export const Card: React.FC<Props> = ({ card, index, total }) => {
+export const Card: React.FC<Props> = ({ card, index, total, accent, source }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
 
-  const isHook = Boolean(card.isHook);
-  const isCta = Boolean(card.isCta);
+  const isHook = card.type === 'hook';
+  const isLast = index === total;
+  const hasVisual = Boolean(card.visual);
 
-  const lines = wrapTitle(card.title);
-  const fontSize = fitFontSize(lines, isHook);
+  const lines = wrapTitle(card.title, hasVisual ? 17 : 15);
+  const fontSize = fitFontSize(lines, isHook, hasVisual);
 
   // ── 등장 ────────────────────────────────────────────────
   const enter = spring({
@@ -44,22 +50,18 @@ export const Card: React.FC<Props> = ({ card, index, total }) => {
     extrapolateRight: 'clamp',
     easing: Easing.in(Easing.quad),
   });
-  // 위로 크게 밀어내서, 아래에서 올라오는 다음 카드와 글자가 겹치지 않게 한다.
   const exitY = exitProgress * -230;
-  // 투명도는 더 빨리 떨어뜨린다(겹침 구간에 잔상이 남지 않도록).
   const exitOpacity = 1 - Math.min(exitProgress * 1.6, 1);
 
-  // ── 골드 언더라인 ───────────────────────────────────────
-  const underline = interpolate(frame, [13, 34], [0, 1], {
+  // ── 강조 언더라인 ───────────────────────────────────────
+  const underline = interpolate(frame, [11, 30], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.out(Easing.cubic),
   });
 
-  // ── 상단 바 ─────────────────────────────────────────────
-  const topBarOpacity = interpolate(frame, [4, 18], [0, 1], { extrapolateRight: 'clamp' });
-
-  const titleColor = isCta ? COLORS.goldBright : COLORS.white;
+  const topBarOpacity = interpolate(frame, [3, 16], [0, 1], { extrapolateRight: 'clamp' });
+  const kicker = card.kicker ?? TYPE_LABEL[card.type] ?? '';
 
   return (
     <AbsoluteFill
@@ -69,7 +71,7 @@ export const Card: React.FC<Props> = ({ card, index, total }) => {
         transform: `translateY(${exitY}px)`,
       }}
     >
-      {/* 상단: 키커 + 카드 번호 */}
+      {/* 상단: 역할 라벨 + 카드 번호 */}
       <div
         style={{
           position: 'absolute',
@@ -83,7 +85,7 @@ export const Card: React.FC<Props> = ({ card, index, total }) => {
           opacity: topBarOpacity,
         }}
       >
-        {card.kicker ? (
+        {kicker ? (
           <div
             style={{
               display: 'inline-flex',
@@ -91,9 +93,9 @@ export const Card: React.FC<Props> = ({ card, index, total }) => {
               gap: 14,
               padding: '14px 28px',
               borderRadius: 999,
-              border: `2px solid ${COLORS.goldSoft}`,
-              background: 'rgba(232, 180, 74, 0.10)',
-              color: COLORS.goldBright,
+              border: `2px solid ${accent.soft}`,
+              background: accent.glow,
+              color: accent.bright,
               fontSize: TYPE.kicker,
               fontWeight: 700,
               letterSpacing: '-0.01em',
@@ -105,11 +107,11 @@ export const Card: React.FC<Props> = ({ card, index, total }) => {
                 width: 12,
                 height: 12,
                 borderRadius: 999,
-                background: COLORS.gold,
-                boxShadow: `0 0 18px ${COLORS.gold}`,
+                background: accent.primary,
+                boxShadow: `0 0 18px ${accent.primary}`,
               }}
             />
-            {card.kicker}
+            {kicker}
           </div>
         ) : (
           <span />
@@ -122,96 +124,142 @@ export const Card: React.FC<Props> = ({ card, index, total }) => {
             gap: 4,
             fontSize: TYPE.indexBadge,
             fontWeight: 800,
-            color: COLORS.textDim,
+            color: BASE.textDim,
             letterSpacing: '0.04em',
           }}
         >
-          <span style={{ color: COLORS.gold, fontSize: TYPE.indexBadge + 8 }}>{index}</span>
+          <span style={{ color: accent.primary, fontSize: TYPE.indexBadge + 8 }}>{index}</span>
           <span>/</span>
           <span>{total}</span>
         </div>
       </div>
 
-      {/* 중앙: 제목 + 언더라인 */}
+      {/* 본문: 제목 + 시각 자료 */}
       <AbsoluteFill
         style={{
           justifyContent: 'center',
-          alignItems: 'flex-start',
+          alignItems: 'stretch',
           paddingLeft: LAYOUT.paddingX,
           paddingRight: LAYOUT.paddingX,
-          // 하단 쇼츠 UI 영역을 피해 본문을 화면 위쪽(약 46% 지점)으로 올린다.
-          paddingBottom: 300,
+          paddingTop: LAYOUT.paddingTop + 90,
+          paddingBottom: LAYOUT.paddingBottom + 40,
         }}
       >
         <div
           style={{
             transform: `translateY(${enterY}px) scale(${enterScale})`,
-            transformOrigin: 'left center',
+            transformOrigin: 'center center',
             opacity: enterOpacity,
             width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            flex: 1,
           }}
         >
-          {lines.map((line, i) => {
-            // 줄마다 아주 살짝 시간차를 둬서 읽는 흐름을 만든다
-            const lineIn = spring({
-              frame: frame - i * 3,
-              fps,
-              config: { damping: 200, mass: 0.6, stiffness: 130 },
-              durationInFrames: 20,
-            });
-            return (
-              <div
-                key={i}
-                style={{
-                  fontSize,
-                  lineHeight: 1.26,
-                  fontWeight: isHook || isCta ? 900 : 800,
-                  color: titleColor,
-                  letterSpacing: '-0.035em',
-                  wordBreak: 'keep-all',
-                  transform: `translateY(${interpolate(lineIn, [0, 1], [26, 0])}px)`,
-                  opacity: lineIn,
-                  textShadow: isCta
-                    ? `0 0 48px rgba(232,180,74,0.35), 0 8px 30px rgba(0,0,0,0.45)`
-                    : '0 8px 30px rgba(0,0,0,0.45)',
-                }}
-              >
-                {line}
-              </div>
-            );
-          })}
+          <div>
+            {lines.map((line, i) => {
+              const lineIn = spring({
+                frame: frame - i * 3,
+                fps,
+                config: { damping: 200, mass: 0.6, stiffness: 130 },
+                durationInFrames: 20,
+              });
+              return (
+                <div
+                  key={i}
+                  style={{
+                    fontSize,
+                    lineHeight: 1.26,
+                    fontWeight: isHook ? 900 : 800,
+                    color: BASE.white,
+                    letterSpacing: '-0.035em',
+                    wordBreak: 'keep-all',
+                    transform: `translateY(${interpolate(lineIn, [0, 1], [26, 0])}px)`,
+                    opacity: lineIn,
+                    textShadow: '0 8px 30px rgba(0,0,0,0.45)',
+                  }}
+                >
+                  {line}
+                </div>
+              );
+            })}
+          </div>
 
-          {/* 골드 언더라인 */}
+          {card.body ? (
+            <div
+              style={{
+                marginTop: 18,
+                fontSize: TYPE.body,
+                fontWeight: 600,
+                color: BASE.textMuted,
+                letterSpacing: '-0.02em',
+                wordBreak: 'keep-all',
+                opacity: interpolate(frame, [12, 26], [0, 1], { extrapolateRight: 'clamp' }),
+              }}
+            >
+              {card.body}
+            </div>
+          ) : null}
+
+          {/* 강조 언더라인 */}
           <div
             style={{
-              marginTop: 40,
-              height: 10,
+              marginTop: 30,
+              height: 8,
               width: `${underline * 100}%`,
-              maxWidth: 540,
+              maxWidth: 420,
               borderRadius: 999,
-              background: `linear-gradient(90deg, ${COLORS.goldBright} 0%, ${COLORS.gold} 60%, rgba(232,180,74,0) 100%)`,
-              boxShadow: `0 0 26px ${COLORS.goldSoft}`,
+              background: `linear-gradient(90deg, ${accent.bright} 0%, ${accent.primary} 60%, rgba(0,0,0,0) 100%)`,
+              boxShadow: `0 0 26px ${accent.soft}`,
+              flexShrink: 0,
             }}
           />
 
-          {/* CTA 카드에만 붙는 보조 문구 — 언더라인 바로 아래에 붙여 쇼츠 UI를 피한다 */}
-          {isCta ? (
+          {/* 시각 자료 — 이 카드의 주인공 */}
+          {card.visual ? (
+            <div style={{ marginTop: 52 }}>
+              <VisualBlock visual={card.visual} accent={accent} />
+            </div>
+          ) : null}
+
+          {/* 마지막 카드: 짧은 CTA 한 줄 (카드 한 장을 통째로 쓰지 않는다) */}
+          {isLast && card.cta ? (
             <div
               style={{
-                marginTop: 44,
-                opacity: interpolate(frame, [22, 40], [0, 1], { extrapolateRight: 'clamp' }),
-                color: COLORS.textMuted,
-                fontSize: 38,
-                fontWeight: 700,
+                marginTop: 46,
+                fontSize: 40,
+                fontWeight: 800,
+                color: accent.bright,
                 letterSpacing: '-0.02em',
+                opacity: interpolate(frame, [24, 40], [0, 1], { extrapolateRight: 'clamp' }),
               }}
             >
-              저장해두면 필요할 때 바로 꺼내볼 수 있어요
+              {card.cta}
             </div>
           ) : null}
         </div>
       </AbsoluteFill>
 
+      {/* 마지막 카드 하단: 출처와 확인 기준일 */}
+      {isLast ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: LAYOUT.paddingX,
+            right: LAYOUT.paddingX,
+            bottom: LAYOUT.paddingBottom + 26,
+            fontSize: 26,
+            fontWeight: 600,
+            color: BASE.textDim,
+            letterSpacing: '-0.01em',
+            opacity: interpolate(frame, [26, 42], [0, 1], { extrapolateRight: 'clamp' }),
+          }}
+        >
+          출처 {source.publisher ? `${source.publisher} · ` : ''}
+          {source.title} / {source.checkedOn} 기준
+        </div>
+      ) : null}
     </AbsoluteFill>
   );
 };

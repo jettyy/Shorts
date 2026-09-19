@@ -1,11 +1,38 @@
-# 카드뉴스형 쇼츠 자동 제조 프로그램
+# 해설형 정보 쇼츠 자동 제조 프로그램
 
-긴 기사·블로그 글을 붙여넣으면, **클로드코드가 그 자리에서 카드 대본을 만들고
-세로형(1080×1920) 쇼츠 영상까지 뽑아주는** 프로젝트입니다.
+기사·블로그 글을 붙여넣으면, **클로드코드가 직접 분석해서 도표가 들어간
+세로형(1080×1920) 쇼츠 영상**을 만들어주는 프로젝트입니다.
 
-- 🔑 **API 키 필요 없음** — 텍스트 분석은 클로드코드가 직접 합니다. `.env`도, 과금도 없습니다.
-- 🎬 **렌더링만 자동화** — `npm run render` 한 줄이면 mp4가 나옵니다.
-- ♻️ **재사용 템플릿** — 새 주제는 `src/script.json`만 갈아끼우면 끝입니다.
+- 📊 **도표 중심** — 막대·꺾은선·도넛·관계도·계산표·체크리스트·타임라인 9종
+- 🎙 **내레이션 녹음 대본 자동 생성** — 직접 녹음해서 얹으면 완성
+- 🔑 **API 키 필요 없음** — 분석은 클로드코드가 직접 합니다. `.env`도, 과금도 없습니다
+- ♻️ **재사용 템플릿** — 새 주제는 `src/script.json`만 갈아끼우면 끝
+
+---
+
+## ⚠️ 먼저 알아야 할 것 — 왜 "그냥 카드뉴스"가 아닌가
+
+유튜브는 **"설명·해설·교육적 가치가 거의 없는 이미지 슬라이드쇼 또는 스크롤 텍스트"**를
+수익화 불가 사례로 명시합니다. 개별 영상이 아니라 **채널 전체**를 보고 판단합니다.
+
+기사를 AI로 요약해서 자막 카드만 넘기는 영상을 반복 업로드하면 위험합니다.
+그래서 이 프로젝트는 처음부터 **요약본이 아닌 해설 영상**이 나오도록 설계돼 있습니다.
+
+| 위험한 방식 | 이 프로젝트의 방식 |
+| --- | --- |
+| 원문 문장을 그대로 옮김 | 사실만 가져와 다시 씀 (`npm run check`가 베낀 문장 검사) |
+| 글자만 넘어감 | 카드마다 도표·그래프 |
+| 요약으로 끝 | **직접 계산(`example`) + 주의점(`caveat`)** 카드 필수 |
+| 해설 없음 | 카드마다 내레이션, 녹음 대본 자동 생성 |
+| 영상마다 똑같은 화면 | 주제별 테마 5종 + 도표 9종 조합 |
+| 출처 불명 | 마지막 카드에 출처·확인 기준일 자동 표기 |
+
+**그래도 승인을 보장할 수는 없습니다.** 최종 판단은 유튜브가 합니다.
+다만 "직접 조사·해설했다"는 근거를 영상 안에 남기는 것이 핵심이고,
+그 근거를 만들기 쉽게 도구를 짜뒀습니다.
+
+> 가장 효과가 큰 한 가지: **본인 목소리 녹음을 얹는 것.**
+> `npm run narration` 으로 대본이 나오니 읽어서 녹음만 하면 됩니다.
 
 ---
 
@@ -14,50 +41,46 @@
 **이 프로젝트 폴더에서 클로드코드를 켜고, 이렇게 말하면 됩니다.**
 
 ```
-이 글로 카드뉴스 쇼츠 만들어줘:
+이 글로 쇼츠 만들어줘:
 
 [여기에 기사나 블로그 글 전체를 그대로 붙여넣기 — 길이 상관없음]
 ```
 
 그러면 클로드코드가 알아서:
 
-1. 원문을 읽고 **가장 후킹되는 부분 + 핵심 정보**만 추려서
-2. `CARD_RULES.md` 규칙대로 **6~8장짜리 카드 대본**(`src/script.json`)을 작성하고
-3. `npm run render`를 실행해 **`output/카드뉴스_[주제]_[타임스탬프].mp4`** 를 만들어줍니다.
+1. 원문에서 **사실과 숫자만** 뽑아내고 (문장은 다시 씁니다)
+2. 직접 계산할 거리와 원문이 빠뜨린 주의점을 찾아
+3. **7장짜리 대본 + 카드별 도표**(`src/script.json`)를 구성하고
+4. **녹음용 내레이션 대본**(`output/내레이션_*.md`)을 만들고
+5. `npm run render` 로 **mp4**를 뽑아줍니다
 
-끝입니다. 명령어를 직접 칠 일은 없습니다.
+그 다음 **대본을 보고 녹음**해서 `public/audio/`에 넣고,
+`script.json`에 `"narrationAudio": "audio/파일명.mp3"` 한 줄 추가 후 다시 렌더하면 끝입니다.
 
-> 💡 톤을 바꾸고 싶으면 같이 말하면 됩니다.
-> 예: `"좀 더 자극적인 훅으로"`, `"CTA는 팔로우 유도로"`, `"카드 6장으로 짧게"`
+> 💡 같이 말해도 됩니다: `"테마는 coral로"`, `"계산 사례 더 넣어줘"`, `"40초로 맞춰줘"`
 
 ---
 
 ## 📦 처음 한 번만: 설치
 
-### 1. Node.js 설치 확인
+### 1. Node.js 확인
 
 ```bash
 node -v    # v18 이상이면 OK
-npm -v
 ```
+없으면 https://nodejs.org 에서 **LTS 버전** 설치 (설치 후 터미널 새로 열기).
 
-안 깔려 있다면 https://nodejs.org 에서 **LTS 버전**을 받아 설치하세요.
-(설치 후 터미널을 새로 열어야 `node` 명령이 잡힙니다.)
-
-### 2. 프로젝트 가져오기 + 패키지 설치
+### 2. 프로젝트 가져오기
 
 ```bash
 cd C:\Users\정대진\Claude
-git clone <이 저장소 주소> shorts-automation
+git clone https://github.com/jettyy/Shorts shorts-automation
 cd shorts-automation
 npm install
 ```
 
-`npm install`이 끝나면 한글 폰트(Pretendard)가 `public/fonts/`에 자동으로 복사됩니다.
-**추가로 받을 폰트나 설정 파일은 없습니다.**
-
-> 첫 `npm run render` 때 Remotion이 렌더링용 Chrome을 한 번 자동으로 내려받습니다(약 150MB).
-> 이미 Chrome이 깔려 있는 환경이라면 `scripts/find-browser.mjs`가 그걸 찾아 씁니다.
+`npm install` 이 끝나면 한글 폰트(Pretendard)가 자동으로 복사됩니다.
+첫 렌더 때 Remotion이 렌더링용 Chrome을 한 번 내려받습니다(약 150MB).
 
 ---
 
@@ -66,9 +89,30 @@ npm install
 | 명령어 | 하는 일 |
 | --- | --- |
 | `npm run render` | `src/script.json` → `output/카드뉴스_[주제]_[타임스탬프].mp4` |
-| `npm run check` | 대본이 규칙(줄 수·길이·훅/CTA)을 지키는지 검사 |
-| `npm run studio` | 브라우저 미리보기 + 타임라인 편집기 실행 |
-| `npm run still -- 35` | 35번 프레임 한 장만 PNG로 뽑아 디자인 확인 |
+| `npm run narration` | 녹음용 내레이션 대본 생성 → `output/내레이션_*.md` |
+| `npm run narration -- --fit` | 읽는 속도에 맞춰 각 카드 길이를 자동 재계산 |
+| `npm run check` | 구조 검사 + "양산형으로 보일 위험" 점검 |
+| `npm run studio` | 브라우저 미리보기 + 타임라인 편집기 |
+| `npm run still -- 100` | 100번 프레임 한 장만 PNG로 확인 |
+
+---
+
+## 🎙 내레이션 녹음해서 얹기
+
+```bash
+npm run narration        # output/내레이션_*.md 생성
+```
+
+1. 나온 대본을 읽으면서 **하나의 파일로** 녹음합니다 (휴대폰 녹음도 충분합니다).
+2. mp3를 `public/audio/` 에 넣습니다.
+3. `src/script.json` 최상단에 한 줄 추가:
+   ```json
+   "narrationAudio": "audio/내파일.mp3"
+   ```
+4. `npm run render` — 목소리가 깔린 영상이 나옵니다.
+
+타이밍이 안 맞으면 `npm run narration -- --fit` 을 돌리세요.
+읽는 속도(초당 5.2자)에 맞춰 카드 길이를 다시 잡아줍니다.
 
 ---
 
@@ -77,28 +121,42 @@ npm install
 ```
 shorts-automation/
 ├── src/
-│   ├── script.json           ← ⭐ 카드 대본. 새 주제마다 이것만 바뀝니다
-│   ├── Root.tsx              컴포지션 등록 (1080×1920, 30fps, 길이 자동 계산)
-│   ├── theme.ts              색·여백·타이포 토큰 (톤 변경은 여기서)
-│   ├── types.ts              script.json 타입 정의
-│   ├── fonts.ts              Pretendard 로컬 로딩
-│   ├── lib/text.ts           한글 줄바꿈 + 폰트 크기 자동 맞춤
+│   ├── script.json              ← ⭐ 대본. 새 주제마다 이것만 바뀝니다
+│   ├── Root.tsx                 컴포지션 등록 (1080×1920, 30fps)
+│   ├── theme.ts                 색 테마 5종 + 여백·타이포 토큰
+│   ├── chartTheme.ts            차트 전용 색·치수 (검증된 팔레트)
+│   ├── types.ts                 script.json 타입 정의
+│   ├── lib/text.ts              한글 줄바꿈 + 폰트 크기 자동 맞춤
 │   └── components/
-│       ├── CardNews.tsx      카드들을 이어붙이는 컴포지션
-│       ├── Card.tsx          ⭐ 카드 한 장 디자인 (재사용 템플릿)
-│       ├── Background.tsx    남색 그라데이션 배경 + 골드 글로우
-│       └── ProgressBar.tsx   하단 진행 바
+│       ├── CardNews.tsx         카드 연결 + 내레이션 오디오
+│       ├── Card.tsx             ⭐ 카드 한 장 (제목 + 도표 + 출처)
+│       ├── Background.tsx       테마별 그라데이션 배경
+│       ├── ProgressBar.tsx      하단 진행 바
+│       └── visuals/             ⭐ 도표 9종
+│           ├── StatVisual.tsx        핵심 숫자
+│           ├── BarVisual.tsx         가로 막대그래프
+│           ├── TrendVisual.tsx       꺾은선 그래프
+│           ├── DonutVisual.tsx       도넛 (비중)
+│           ├── FlowVisual.tsx        관계 도표 (화살표 연결)
+│           ├── CalcVisual.tsx        계산 내역
+│           ├── ChecklistVisual.tsx   해당/비해당
+│           ├── TableVisual.tsx       2열 비교표
+│           └── TimelineVisual.tsx    시점별 변화
 ├── scripts/
-│   ├── render.mjs            렌더 자동화 (타임스탬프 파일명)
-│   ├── check-script.mjs      대본 규칙 검사
-│   ├── setup-fonts.mjs       폰트 복사 (postinstall 자동 실행)
-│   ├── find-browser.mjs      렌더용 Chrome 탐색
-│   └── still.mjs             프레임 한 장 미리보기
+│   ├── render.mjs               렌더 자동화
+│   ├── narration.mjs            녹음 대본 생성 / 길이 자동 조정
+│   ├── check-script.mjs         구조·독창성 점검
+│   ├── setup-fonts.mjs          폰트 복사 (자동 실행)
+│   └── find-browser.mjs         렌더용 Chrome 탐색
 ├── docs/
-│   └── sample-source.md      예시용 샘플 원문
-├── output/                   완성 영상 (git에 올라가지 않음)
-├── CARD_RULES.md             ⭐ 카드 대본 작성 규칙 (클로드코드 지시서)
-└── README.md
+│   ├── VISUALS.md               ⭐ 도표 9종 사용법
+│   ├── examples/charts-demo.json   도표 렌더 확인용 데모
+│   └── sample-source.md         예시용 샘플 원문
+├── public/audio/                녹음한 내레이션 (git 제외)
+├── .source/                     분석용 원문 (git 제외)
+├── output/                      완성 영상 (git 제외)
+├── CARD_RULES.md                ⭐ 대본 작성 규칙 (클로드코드 지시서)
+└── CLAUDE.md                    세션 자동 참조용 지침
 ```
 
 ---
@@ -108,66 +166,29 @@ shorts-automation/
 | 항목 | 값 |
 | --- | --- |
 | 해상도 / 프레임 | 1080 × 1920 (9:16), 30fps |
-| 배경 | 진한 네이비 그라데이션 + 상단 골드 글로우 + 비네트 |
-| 포인트 컬러 | 골드 `#E8B44A` / `#FFD874` |
-| 폰트 | Pretendard (Medium 500 / Bold 700 / ExtraBold 800 / Black 900) |
-| 제목 | 최대 3줄, 글자 수에 따라 52~124px 자동 조절 |
-| 등장 애니메이션 | 아래→위 이동 + 페이드인 + 0.94→1 확대 (스프링), 줄 단위 시간차 |
-| 강조 연출 | 제목 아래 **골드 언더라인이 왼쪽에서 오른쪽으로 그려짐** |
-| 훅 카드 | 폰트 크기 확대 (최대 124px), Black 900 |
-| CTA 카드 | 텍스트 골드 컬러 + 글로우, 보조 문구 추가 |
-| 카드 번호 | 우측 상단 `1 / 7` (숫자만 골드) |
-| 안전 영역 | 하단 232px은 비움 — 유튜브 쇼츠 UI가 덮는 구간 |
-
-**카드 개수·텍스트·타이밍만 바뀌면 그대로 새 영상이 나옵니다.**
-디자인 파일은 건드릴 필요가 없습니다.
-
----
-
-## 📝 카드 대본 직접 수정하기
-
-클로드코드에게 맡기지 않고 직접 고치고 싶다면 `src/script.json`을 열어 수정하세요.
-
-```json
-{
-  "topic": "모두의카드 포인트",
-  "cards": [
-    {
-      "kicker": "몰라서 못 받는 돈",
-      "title": "안 쓰는 카드 포인트\n1년 뒤엔 그냥 사라집니다",
-      "isHook": true,
-      "durationSec": 4.6
-    },
-    {
-      "title": "지금 내 포인트부터\n확인해보세요",
-      "isCta": true,
-      "durationSec": 3.9
-    }
-  ]
-}
-```
-
-수정 후 `npm run check`로 검사하고 `npm run render`로 렌더링하면 됩니다.
-필드별 규칙은 **[CARD_RULES.md](./CARD_RULES.md)** 에 전부 정리돼 있습니다.
+| 배경 | 진한 네이비 그라데이션 + 테마색 글로우 + 비네트 |
+| 테마 | `gold` / `mint` / `coral` / `violet` / `ice` |
+| 폰트 | Pretendard (Medium / Bold / ExtraBold / Black) |
+| 제목 | 최대 3줄, 글자 수에 따라 자동 축소. 도표가 있으면 더 작게 |
+| 등장 | 아래→위 이동 + 페이드인 + 스프링 확대, 줄 단위 시간차 |
+| 전환 | 앞 카드는 위로, 뒤 카드는 아래에서 (컨베이어식) |
+| 강조 | 제목 아래 테마색 언더라인이 좌→우로 그려짐 |
+| 차트 색 | "하나만 강조, 나머지는 회색" — 색각이상·대비 검증 완료 |
+| 안전 영역 | 하단 232px 비움 (쇼츠 UI가 덮는 구간) |
+| 출처 | 마지막 카드 하단에 매체·제목·확인 기준일 자동 표기 |
 
 ---
 
 ## ❓ 자주 막히는 곳
 
-**`npm install`에서 멈춰요**
-→ 회사망/방화벽 문제일 수 있습니다. 개인 네트워크에서 다시 시도해보세요.
-
 **렌더링할 때 Chrome 다운로드가 실패해요**
-→ Chrome이 이미 깔려 있다면 그 경로를 지정하면 됩니다.
-```bash
-# Windows PowerShell
+```powershell
 $env:REMOTION_BROWSER_EXECUTABLE="C:\Program Files\Google\Chrome\Application\chrome.exe"
 npm run render
 ```
 
-**글자가 네모(□)로 나와요**
-→ 폰트가 복사되지 않은 경우입니다. `node scripts/setup-fonts.mjs`를 실행하세요.
+**글자가 네모(□)로 나와요** → `node scripts/setup-fonts.mjs` 실행
 
-**영상이 너무 길어요 / 짧아요**
-→ `src/script.json`의 `durationSec` 값을 조절하거나, 카드 장수를 줄이세요.
-   클로드코드에게 `"25초로 줄여줘"`라고 말해도 됩니다.
+**영상이 너무 길어요** → 내레이션을 줄이고 `npm run narration -- --fit`
+
+**도표가 안 나와요** → `npm run check` 로 `visual` 형식 확인, [docs/VISUALS.md](./docs/VISUALS.md) 참고

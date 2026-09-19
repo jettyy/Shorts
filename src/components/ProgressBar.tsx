@@ -1,17 +1,18 @@
 import React from 'react';
 import { useCurrentFrame, useVideoConfig } from 'remotion';
-import { COLORS, LAYOUT } from '../theme';
+import { LAYOUT, type Accent } from '../theme';
 
 type Props = {
   /** 각 카드의 길이(프레임). 카드 단위로 칸이 나뉜다 */
   segments: number[];
+  accent: Accent;
 };
 
 /**
  * 하단 진행 바. 카드 개수만큼 칸이 나뉘고, 현재 카드 칸이 골드로 차오른다.
  * 카드 시퀀스 바깥(전체 타임라인)에 있어서 카드가 바뀌어도 끊기지 않는다.
  */
-export const ProgressBar: React.FC<Props> = ({ segments }) => {
+export const ProgressBar: React.FC<Props> = ({ segments, accent }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
 
@@ -46,8 +47,8 @@ export const ProgressBar: React.FC<Props> = ({ segments }) => {
               style={{
                 width: `${local * 100}%`,
                 height: '100%',
-                background: `linear-gradient(90deg, ${COLORS.gold}, ${COLORS.goldBright})`,
-                boxShadow: local > 0 ? `0 0 14px ${COLORS.goldSoft}` : 'none',
+                background: `linear-gradient(90deg, ${accent.primary}, ${accent.bright})`,
+                boxShadow: local > 0 ? `0 0 14px ${accent.soft}` : 'none',
               }}
             />
           </div>

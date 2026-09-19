@@ -4,3 +4,8 @@ output/
 public/fonts/
 .DS_Store
 *.log
+
+# 분석용으로 붙여넣은 원문 — 저작물이므로 저장소에 올리지 않는다
+.source/
+# 직접 녹음한 내레이션 오디오
+public/audio/

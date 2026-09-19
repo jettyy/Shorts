@@ -2,33 +2,44 @@
 
 ## 이 프로젝트가 하는 일
 
-기사·블로그 원문을 카드뉴스형 세로 쇼츠(1080×1920 mp4)로 만드는 Remotion 프로젝트다.
+기사·블로그 원문을 **도표가 들어간 해설형 세로 쇼츠**(1080×1920 mp4)로 만드는 Remotion 프로젝트다.
 
-## 가장 중요한 규칙
+## 가장 중요한 두 가지
 
-**원문 → 카드 대본 변환은 API를 호출하지 않는다. 클로드코드가 직접 한다.**
+**1. 원문 → 대본 변환은 API를 호출하지 않는다. 클로드코드가 직접 한다.**
+이 저장소에 Anthropic API 호출 코드, API 키, `.env`, `dotenv`를 **추가하지 않는다.**
 
-- 이 저장소에 Anthropic API 호출 코드, API 키, `.env`, `dotenv`를 **추가하지 않는다.**
-- 사용자가 원문을 붙여넣으며 "쇼츠 만들어줘"라고 하면, 그 세션의 클로드코드가
-  원문을 직접 읽고 분석해 `src/script.json`을 작성한 뒤 렌더 명령까지 실행한다.
+**2. 결과물은 "기사 요약 자막 카드"가 되면 안 된다.**
+유튜브가 수익화 불가로 명시한 "해설·교육적 가치가 거의 없는 이미지 슬라이드쇼"에
+해당하지 않도록, 아래를 반드시 지킨다.
+- 원문 문장을 그대로 옮기지 않는다. 사실과 숫자만 가져와 다시 쓴다.
+- 카드마다 도표(`visual`)를 붙인다. 글자만 있는 카드는 1장 이하.
+- **직접 계산(`type: "example"`)과 주의점(`type: "caveat"`) 카드를 반드시 넣는다.**
+- 카드마다 `narration`을 쓰고, 녹음 대본을 만들어 사용자에게 안내한다.
+- 주제가 바뀌면 `accent` 테마와 도표 종류를 바꾼다.
 
 ## 원문을 받았을 때 할 일
 
-1. **[CARD_RULES.md](./CARD_RULES.md)를 먼저 읽는다.** 대본 작성 기준이 전부 거기 있다.
-2. 규칙대로 `src/script.json`을 덮어쓴다 (6~8장, 1번=훅, 마지막=CTA).
-3. `npm run check` — 규칙 위반이 있으면 고친다.
-4. `npm run render` — `output/카드뉴스_[주제]_[타임스탬프].mp4` 생성.
-5. 결과 파일 경로와 총 길이를 사용자에게 알려준다.
+1. **[CARD_RULES.md](./CARD_RULES.md) 와 [docs/VISUALS.md](./docs/VISUALS.md) 를 읽는다.**
+2. 원문을 `.source/current.txt` 에 저장한다 (베낀 문장 자동 검사용, git 제외).
+3. 규칙대로 `src/script.json` 을 덮어쓴다.
+4. `npm run narration -- --fit` — 내레이션 길이에 맞춰 카드 길이 자동 조정.
+5. `npm run check` — ERROR는 고치고, 💡 안내는 판단해서 반영.
+6. `npm run render` — `output/카드뉴스_[주제]_[타임스탬프].mp4`
+7. 사용자에게 **영상 경로 + 총 길이 + 녹음 대본 경로**를 알리고,
+   목소리를 얹는 방법(README의 "내레이션 녹음해서 얹기")을 안내한다.
 
 ## 건드리지 말 것
 
-- `src/components/` 의 디자인은 **재사용 템플릿**이다. 새 주제를 만들 때는 손대지 않는다.
-- 톤 변경 요청이 명시적으로 들어왔을 때만 `src/theme.ts`의 토큰을 수정한다.
+- `src/components/` 의 디자인은 재사용 템플릿이다. 새 주제를 만들 때는 손대지 않는다.
+- 도표 색은 색각이상·대비 검증을 거쳤다(`src/components/chartTheme.ts`).
+  "하나만 강조, 나머지는 회색" 원칙을 깨지 않는다.
+- 새 도표 종류를 추가할 때만 `src/components/visuals/` 에 파일을 만들고
+  `types.ts` 의 `Visual` 유니온과 `visuals/index.tsx` 분기에 등록한다.
 
 ## 환경 메모
 
-- 렌더링에는 Chrome/Chromium이 필요하다. 자동 다운로드가 막힌 환경에서는
-  `scripts/find-browser.mjs`가 설치된 브라우저를 찾아 쓴다.
-  직접 지정하려면 `REMOTION_BROWSER_EXECUTABLE` 환경변수를 쓴다.
-- 한글 폰트(Pretendard)는 `npm install` 시 `scripts/setup-fonts.mjs`가
-  `node_modules`에서 `public/fonts/`로 복사한다. 외부 CDN을 쓰지 않는다.
+- 렌더링에 Chrome/Chromium이 필요하다. 자동 다운로드가 막힌 환경에서는
+  `scripts/find-browser.mjs` 가 설치된 브라우저를 찾아 쓴다.
+  직접 지정하려면 `REMOTION_BROWSER_EXECUTABLE` 환경변수.
+- 한글 폰트는 `npm install` 시 node_modules에서 `public/fonts/` 로 복사된다. 외부 CDN 미사용.

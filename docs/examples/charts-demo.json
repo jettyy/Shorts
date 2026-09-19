@@ -1,0 +1,108 @@
+{
+  "script": {
+    "topic": "도표 종류 확인용 데모",
+    "accent": "mint",
+    "source": {
+      "title": "도표 렌더링 확인용 데모 데이터",
+      "publisher": "내부 테스트",
+      "url": "https://example.com/demo",
+      "checkedOn": "2026-09-19"
+    },
+    "cards": [
+      {
+        "type": "fact",
+        "origin": "creator",
+        "kicker": "막대그래프",
+        "title": "항목별 크기 비교",
+        "narration": "막대그래프 데모입니다.",
+        "durationSec": 4,
+        "visual": {
+          "kind": "bar",
+          "unit": "원",
+          "items": [
+            {
+              "label": "A카드",
+              "value": 12400,
+              "highlight": true
+            },
+            {
+              "label": "B카드",
+              "value": 6850
+            },
+            {
+              "label": "C카드",
+              "value": 3120
+            },
+            {
+              "label": "D카드",
+              "value": 900,
+              "note": "최소 전환 금액 미달"
+            }
+          ]
+        }
+      },
+      {
+        "type": "fact",
+        "origin": "creator",
+        "kicker": "꺾은선",
+        "title": "연도별 변화 추이",
+        "narration": "꺾은선 데모입니다.",
+        "durationSec": 4,
+        "visual": {
+          "kind": "trend",
+          "unit": "억",
+          "points": [
+            {
+              "label": "2021",
+              "value": 820
+            },
+            {
+              "label": "2022",
+              "value": 910
+            },
+            {
+              "label": "2023",
+              "value": 870
+            },
+            {
+              "label": "2024",
+              "value": 1040
+            },
+            {
+              "label": "2025",
+              "value": 1180
+            }
+          ]
+        }
+      },
+      {
+        "type": "conclusion",
+        "origin": "creator",
+        "kicker": "도넛",
+        "title": "전체 중 비중",
+        "narration": "도넛 데모입니다.",
+        "durationSec": 4,
+        "cta": "데모 끝",
+        "visual": {
+          "kind": "donut",
+          "centerLabel": "100%",
+          "slices": [
+            {
+              "label": "그냥 소멸",
+              "value": 62,
+              "highlight": true
+            },
+            {
+              "label": "현금 전환",
+              "value": 23
+            },
+            {
+              "label": "포인트 결제",
+              "value": 15
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
