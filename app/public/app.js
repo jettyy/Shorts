@@ -457,12 +457,24 @@ async function startRecording(index, btn) {
   }
 
   state.chunks = [];
-  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-    ? 'audio/webm;codecs=opus'
-    : 'audio/webm';
-  state.recorder = new MediaRecorder(state.stream, { mimeType: mime });
+  try {
+    state.recorder = new MediaRecorder(state.stream, pickRecordOptions());
+  } catch (err) {
+    console.error('[녹음] MediaRecorder 생성 실패', err);
+    state.stream?.getTracks().forEach((t) => t.stop());
+    state.stream = null;
+    return showMicError(
+      index,
+      '이 브라우저에서 녹음을 시작하지 못했습니다.\n' +
+        `크롬으로 열면 됩니다. (${err.name}: ${err.message})`,
+    );
+  }
   state.recorder.ondataavailable = (ev) => ev.data.size && state.chunks.push(ev.data);
   state.recorder.onstop = () => uploadClip(index);
+  state.recorder.onerror = (ev) => {
+    console.error('[녹음] 오류', ev.error);
+    toast(`녹음 중 오류: ${ev.error?.name ?? '알 수 없음'}`, true);
+  };
   state.recorder.start();
   state.recordingIndex = index;
 
@@ -477,8 +489,34 @@ function stopRecording() {
   state.stream?.getTracks().forEach((t) => t.stop());
 }
 
+/**
+ * 이 브라우저가 실제로 녹음할 수 있는 형식을 고른다.
+ *
+ * **사파리는 webm 을 못 만든다.** MediaRecorder 는 지원하지만 컨테이너가 mp4(AAC)다.
+ * 그래서 예전처럼 'audio/webm' 을 강제로 넘기면 NotSupportedError 로 죽어서
+ * 녹음 버튼을 눌러도 아무 일도 안 일어났다.
+ *
+ * 되는 형식을 순서대로 찾아보고, 하나도 없으면 옵션 없이 브라우저가 알아서 고르게 둔다.
+ * 서버는 ffmpeg 로 wav 변환하므로 어떤 형식으로 와도 상관없다.
+ */
+function pickRecordOptions() {
+  const candidates = [
+    'audio/webm;codecs=opus', // 크롬·엣지·파이어폭스
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2', // 사파리
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
+  ];
+  const supported = candidates.find(
+    (t) => window.MediaRecorder?.isTypeSupported?.(t),
+  );
+  return supported ? { mimeType: supported } : {};
+}
+
 async function uploadClip(index) {
-  const blob = new Blob(state.chunks, { type: 'audio/webm' });
+  // 녹음기가 실제로 쓴 형식을 그대로 보낸다 (사파리는 mp4 로 나온다)
+  const type = state.recorder?.mimeType || state.chunks[0]?.type || 'application/octet-stream';
+  const blob = new Blob(state.chunks, { type });
   state.recorder = null;
   state.recordingIndex = null;
   state.stream = null;
@@ -493,7 +531,7 @@ async function uploadClip(index) {
   try {
     const { duration } = await api(`/api/clip?index=${index}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'audio/webm' },
+      headers: { 'Content-Type': blob.type || 'application/octet-stream' },
       body: blob,
     });
     state.clips[index] = { index, duration };
@@ -1125,9 +1163,27 @@ async function diagnoseMic() {
   }
   lines.push(mark(!openError, `마이크 열기: ${openError ? `실패 (${openError.name})` : '성공'}`));
 
-  // 5) 결론
+  /*
+   * 5) 녹음 형식
+   * 브라우저마다 만들 수 있는 형식이 다르다(크롬 webm / 사파리 mp4).
+   * 예전에는 webm 을 강제해서 사파리에서 녹음이 시작조차 안 됐다 — 여기서 바로 보이게 한다.
+   */
+  const recType = pickRecordOptions().mimeType;
+  const canRecord = Boolean(window.MediaRecorder);
+  lines.push(
+    mark(
+      canRecord,
+      `녹음 형식: ${
+        !canRecord ? 'MediaRecorder 미지원' : recType ?? '브라우저 기본값 (형식 질의 불가)'
+      }`,
+    ),
+  );
+
+  // 6) 결론
   let verdict;
-  if (!openError) {
+  if (!canRecord) {
+    verdict = '이 브라우저는 녹음(MediaRecorder)을 지원하지 않습니다. 크롬으로 열어주세요.';
+  } else if (!openError) {
     verdict = '마이크는 정상입니다. 바로 녹음하시면 됩니다.';
   } else if (!secure) {
     verdict = 'http://localhost:4321 로 접속해야 녹음이 됩니다. 다른 주소로 열려 있습니다.';

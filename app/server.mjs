@@ -603,8 +603,9 @@ const openStream = (res, jobId, req) => {
 const routes = {
   'GET /api/status': async (req, res) => {
     const script = loadScript();
+    // 변환된 wav 가 있는 카드만 "녹음된 카드"로 센다
     const clips = existsSync(CLIPS_DIR)
-      ? readdirSync(CLIPS_DIR).filter((f) => f.endsWith('.webm'))
+      ? readdirSync(CLIPS_DIR).filter((f) => f.endsWith('.wav'))
       : [];
     json(res, 200, {
       install: checkInstall(),
@@ -822,7 +823,14 @@ const routes = {
     const buf = await readBody(req);
     if (!buf.length) return json(res, 400, { error: '빈 녹음입니다.' });
 
-    const file = join(CLIPS_DIR, `card-${index}.webm`);
+    /**
+     * 원본 녹음 파일.
+     *
+     * 형식은 브라우저마다 다르다 — 크롬은 webm(opus), **사파리는 mp4(AAC)** 다.
+     * 확장자로 형식을 표현하려 들면 지우는 쪽에서 빠뜨리게 되므로 `.rec` 하나로 고정한다.
+     * ffmpeg 는 확장자가 아니라 내용으로 형식을 판별하므로 문제없다.
+     */
+    const file = join(CLIPS_DIR, `card-${index}.rec`);
     writeFileSync(file, buf);
     try {
       // 브라우저 MediaRecorder 결과는 길이 정보가 빠져 있을 때가 있어 한 번 다시 감싼다
@@ -841,7 +849,7 @@ const routes = {
 
   'DELETE /api/clip': async (req, res, url) => {
     const index = Number(url.searchParams.get('index'));
-    for (const ext of ['webm', 'wav']) {
+    for (const ext of ['rec', 'webm', 'wav']) {  // webm 은 예전 버전이 남긴 파일
       const f = join(CLIPS_DIR, `card-${index}.${ext}`);
       if (existsSync(f)) rmSync(f);
     }
@@ -1067,7 +1075,7 @@ const routes = {
     let clips = 0;
     if (existsSync(CLIPS_DIR)) {
       for (const f of readdirSync(CLIPS_DIR)) {
-        if (f.endsWith('.webm') || f.endsWith('.wav')) clips += 1;
+        if (f.endsWith('.wav')) clips += 1;
         rmSync(join(CLIPS_DIR, f), { force: true });
       }
     }
@@ -1230,16 +1238,54 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
-const serveFile = (res, file, download = false) => {
+/**
+ * 파일 응답.
+ *
+ * **Range(부분 요청)를 반드시 지원해야 한다.**
+ * 사파리는 <audio>/<video> 를 재생할 때 먼저 Range 요청을 보내고 206 응답을 기대한다.
+ * 200 으로 통째로 내려주면 재생이 "오류"로 죽는다(크롬은 그냥 넘어가서 안 보인다).
+ * Content-Length 도 같이 준다 — 없으면 사파리가 길이를 몰라 탐색이 안 된다.
+ */
+const serveFile = (res, file, download = false, req = null) => {
   if (!existsSync(file) || !statSync(file).isFile()) {
     res.writeHead(404).end('not found');
     return;
   }
-  const headers = { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream' };
+  const size = statSync(file).size;
+  const headers = {
+    'Content-Type': MIME[extname(file)] ?? 'application/octet-stream',
+    'Accept-Ranges': 'bytes',
+    // 녹음을 다시 해도 이전 파일이 재생되면 안 된다
+    'Cache-Control': 'no-store',
+  };
   if (download) {
     headers['Content-Disposition'] = attachment(file.split(/[\\/]/).pop());
   }
+
+  const range = req?.headers?.range;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(range ?? '');
+  if (m && (m[1] || m[2])) {
+    // "bytes=-500" 은 끝에서 500바이트를 달라는 뜻이다
+    let start = m[1] ? Number(m[1]) : size - Number(m[2]);
+    let end = m[1] ? (m[2] ? Number(m[2]) : size - 1) : size - 1;
+    start = Math.max(0, start);
+    end = Math.min(end, size - 1);
+
+    if (start > end || start >= size) {
+      res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end();
+      return;
+    }
+    headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+    headers['Content-Length'] = end - start + 1;
+    res.writeHead(206, headers);
+    if (req?.method === 'HEAD') return res.end();
+    createReadStream(file, { start, end }).pipe(res);
+    return;
+  }
+
+  headers['Content-Length'] = size;
   res.writeHead(200, headers);
+  if (req?.method === 'HEAD') return res.end();
   createReadStream(file).pipe(res);
 };
 
@@ -1253,21 +1299,21 @@ const server = http.createServer(async (req, res) => {
     if (routes[key]) return await routes[key](req, res, url);
 
     // 정적 자원
-    if (url.pathname === '/') return serveFile(res, join(PUBLIC_DIR, 'index.html'));
+    if (url.pathname === '/') return serveFile(res, join(PUBLIC_DIR, 'index.html'), false, req);
     if (url.pathname.startsWith('/data/')) {
-      return serveFile(res, join(root, 'app', 'data', url.pathname.slice(6)));
+      return serveFile(res, join(root, 'app', 'data', url.pathname.slice(6)), false, req);
     }
     if (url.pathname.startsWith('/clip/')) {
-      return serveFile(res, join(CLIPS_DIR, `card-${Number(url.pathname.slice(6))}.wav`));
+      return serveFile(res, join(CLIPS_DIR, `card-${Number(url.pathname.slice(6))}.wav`), false, req);
     }
     if (url.pathname.startsWith('/audio/')) {
-      return serveFile(res, join(AUDIO_DIR, url.pathname.slice(7)));
+      return serveFile(res, join(AUDIO_DIR, url.pathname.slice(7)), false, req);
     }
     if (url.pathname.startsWith('/output/')) {
-      return serveFile(res, join(OUTPUT_DIR, decodeURIComponent(url.pathname.slice(8))), true);
+      return serveFile(res, join(OUTPUT_DIR, decodeURIComponent(url.pathname.slice(8))), true, req);
     }
     const candidate = join(PUBLIC_DIR, url.pathname.replace(/^\/+/, ''));
-    if (candidate.startsWith(PUBLIC_DIR)) return serveFile(res, candidate);
+    if (candidate.startsWith(PUBLIC_DIR)) return serveFile(res, candidate, false, req);
 
     res.writeHead(404).end('not found');
   } catch (e) {
