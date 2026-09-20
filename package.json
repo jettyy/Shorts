@@ -13,7 +13,8 @@
     "studio": "remotion studio",
     "still": "node scripts/still.mjs",
     "upgrade": "remotion upgrade",
-    "test:slot": "node scripts/test-next-slot.mjs"
+    "test:slot": "node scripts/test-next-slot.mjs",
+    "test:yt": "node scripts/test-yt-errors.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.526",

@@ -175,7 +175,7 @@ export const createYouTube = (dataDir) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = new Error(data.error?.message ?? `유튜브 응답 오류 (${res.status})`);
+      const err = new Error(explain(data, res.status));
       err.status = res.status;
       err.reason = data.error?.errors?.[0]?.reason ?? '';
       throw err;
@@ -233,9 +233,9 @@ export const createYouTube = (dataDir) => {
       last = await latestScheduled(token);
     } catch (e) {
       note =
-        e.status === 403
+        e.reason === 'insufficientPermissions'
           ? '예약 목록을 읽을 권한이 없습니다. [계정 다시 연결]을 누르면 마지막 예약 뒤로 자동 계산됩니다.'
-          : `예약 목록을 읽지 못했습니다 (${e.message})`;
+          : `예약 목록을 읽지 못했습니다 — ${e.message}`;
     }
 
     // 이미 지난 예약을 기준으로 잡으면 과거 시각이 나온다 → 지금과 비교해 늦은 쪽
@@ -248,6 +248,59 @@ export const createYouTube = (dataDir) => {
       gapHours: [GAP_MIN_H, GAP_MAX_H],
       note,
     };
+  };
+
+  /**
+   * 유튜브가 돌려준 오류를 사람이 읽고 바로 고칠 수 있는 문장으로 바꾼다.
+   *
+   * 구글 오류는 영어 JSON 그대로 나와서 "뭘 어떻게 하라는 건지" 알기 어렵다.
+   * 특히 아래 두 가지는 **설정 문제라 앱을 아무리 고쳐도 안 풀린다** — 할 일을 직접 알려준다.
+   */
+  const explain = (data, status) => {
+    const err = data?.error ?? {};
+    const reason = err.errors?.[0]?.reason ?? '';
+    const message = String(err.message ?? '');
+
+    // ① 프로젝트에 YouTube Data API v3 가 안 켜져 있다 (첫 업로드에서 가장 흔하다)
+    if (reason === 'accessNotConfigured' || /has not been used in project|is disabled/i.test(message)) {
+      const project = message.match(/project (\d+)/)?.[1];
+      const link = project
+        ? `https://console.developers.google.com/apis/api/youtube.googleapis.com/overview?project=${project}`
+        : 'https://console.cloud.google.com/apis/library/youtube.googleapis.com';
+      return (
+        '이 구글 클라우드 프로젝트에 "YouTube Data API v3" 가 켜져 있지 않습니다.\n' +
+        '공개·비공개 설정과는 상관없는 문제라, 켜기 전에는 어떤 방식으로도 올라가지 않습니다.\n\n' +
+        `아래 주소에서 [사용 설정] 을 누르고, 2~3분 기다린 뒤 다시 시도해주세요.\n${link}\n\n` +
+        '(반영에 몇 분 걸립니다. 바로 다시 누르면 같은 오류가 납니다)'
+      );
+    }
+
+    // ② 이 구글 계정에 유튜브 채널이 없다
+    if (reason === 'youtubeSignupRequired') {
+      return (
+        '이 구글 계정에 유튜브 채널이 없습니다.\n' +
+        'youtube.com 에서 채널을 먼저 만들거나, 채널이 있는 계정으로 다시 연결해주세요.'
+      );
+    }
+
+    // ③ 오늘 할당량 소진
+    if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded') {
+      return (
+        '오늘 할당량을 다 썼습니다. 유튜브 API 는 업로드 1건에 1600 units 를 쓰고\n' +
+        '기본 한도가 하루 10,000 units 라 하루 약 6개까지만 올라갑니다.\n' +
+        '내일 다시 시도하거나, 유튜브 스튜디오에서 직접 올려주세요.'
+      );
+    }
+
+    // ④ 예약 시각이 잘못됐다
+    if (/publishAt/i.test(message)) {
+      return (
+        '예약 시각을 유튜브가 거절했습니다. 앞으로의 시각인지 확인해주세요.\n' +
+        `(유튜브 응답: ${message})`
+      );
+    }
+
+    return message || `유튜브 응답 오류 (${status})`;
   };
 
   /**
@@ -289,7 +342,13 @@ export const createYouTube = (dataDir) => {
     });
     if (!start.ok) {
       const text = await start.text();
-      throw new Error(`업로드 시작 실패 (${start.status})\n${text.slice(0, 400)}`);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        /* JSON 이 아니면 아래에서 상태 코드만 쓴다 */
+      }
+      throw new Error(explain(parsed, start.status));
     }
     const sessionUrl = start.headers.get('location');
     if (!sessionUrl) throw new Error('업로드 세션 주소를 받지 못했습니다.');
@@ -309,16 +368,7 @@ export const createYouTube = (dataDir) => {
       duplex: 'half',
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const reason = data.error?.errors?.[0]?.reason ?? '';
-      if (reason === 'quotaExceeded') {
-        throw new Error(
-          '오늘 할당량을 다 썼습니다. 유튜브 API 는 업로드 1건에 1600 units 를 쓰고\n' +
-            '기본 한도가 하루 10,000 units 라 하루 약 6개까지만 올라갑니다.',
-        );
-      }
-      throw new Error(data.error?.message ?? `업로드 실패 (${res.status})`);
-    }
+    if (!res.ok) throw new Error(explain(data, res.status));
 
     return {
       id: data.id,

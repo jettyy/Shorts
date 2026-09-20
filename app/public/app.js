@@ -1051,7 +1051,15 @@ $('#btnYtUpload').addEventListener('click', async () => {
     $('#ytProgressBox').classList.add('hidden');
     const box = $('#ytResult');
     box.className = 'yt-result err';
-    box.textContent = msg;
+    /*
+     * 오류 안내에는 "이 주소에서 사용 설정하세요" 같은 링크가 들어간다.
+     * 글자로만 두면 복사해서 주소창에 붙여야 해서, 눌러서 갈 수 있게 링크로 만든다.
+     * (escapeHtml 을 먼저 걸어 오류 문구가 HTML 로 해석되지 않게 한다)
+     */
+    box.innerHTML = escapeHtml(msg).replace(
+      /https?:\/\/[^\s<]+/g,
+      (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`,
+    );
     box.classList.remove('hidden');
   };
 
