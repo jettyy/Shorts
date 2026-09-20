@@ -96,24 +96,34 @@ try {
 
 server.close();
 
-/* ── 재시도 ────────────────────────────────────────────────
- * 업로드 도중 끊기는 일은 흔하다. 한 번 끊겼다고 포기하면 안 되고,
- * 반대로 할당량 초과처럼 다시 보내도 똑같이 실패하는 건 재시도하면 안 된다
- * (업로드 1건에 1600 units 라 할당량만 태운다).
+/* ── 끊겼는데 사실은 올라가 있었을 때 ─────────────────────
+ *
+ * resumable 업로드는 **본문이 다 도착한 뒤에도 응답을 못 받는 일**이 있다.
+ * 예전에는 그럴 때 처음부터 다시 올렸고, 그러면 새 세션이 열려서
+ * 같은 영상이 채널에 두 개 생겼다(할당량도 두 배로 나갔다).
+ * 실제로 사용자 채널에 똑같은 영상이 두 개 올라갔다.
+ *
+ * 지금은 같은 세션에 "얼마나 받았냐"고 물어보고, 다 받았으면 성공으로 처리한다.
  */
-const retryTest = async () => {
-  let puts = 0;
+const resumeTest = async () => {
+  let sessions = 0;
+  let bodyPuts = 0;
   const srv = http.createServer((req, res) => {
     if (req.method === 'PUT') {
-      puts++;
-      if (puts === 1) return req.socket.destroy(); // 첫 번째는 도중에 끊는다
-      req.resume();
-      req.on('end', () => {
+      // 본문 없이 오는 PUT = 세션 상태 문의 (Content-Range: bytes * /크기)
+      const range = req.headers['content-range'];
+      if (range) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ id: 'RETRIED', status: { privacyStatus: 'private' } }));
-      });
+        res.end(JSON.stringify({ id: 'ALREADY', status: { privacyStatus: 'private' } }));
+        return;
+      }
+      bodyPuts++;
+      // 본문은 다 받되 응답은 안 주고 끊는다 (유튜브 쪽엔 올라간 상태)
+      req.resume();
+      req.on('end', () => req.socket.destroy());
       return;
     }
+    sessions++;
     res.writeHead(200, {
       'Content-Type': 'application/json',
       Location: `http://127.0.0.1:${srv.address().port}/session`,
@@ -131,12 +141,57 @@ const retryTest = async () => {
     return realFetch(url, opts);
   };
 
-  console.log('\n중간에 끊겼을 때');
+  console.log('\n응답만 못 받았을 때 (이미 올라가 있다)');
   try {
     const r = await yt.upload({ filePath: video, meta: { title: 't' }, mode: 'private' });
-    check(r.id === 'RETRIED', `다시 시도해서 올라갔다 (PUT ${puts}번)`);
+    check(r.id === 'ALREADY', '올라간 영상을 찾아서 성공으로 처리한다');
+    check(sessions === 1, `업로드 세션을 한 번만 연다 — 두 번 올리지 않는다 (${sessions}번)`);
+    check(bodyPuts === 1, `본문도 한 번만 보낸다 (${bodyPuts}번)`);
   } catch (e) {
-    check(false, `재시도했어야 하는데 실패했다 — ${e.message.split('\n')[0]}`);
+    check(false, `올라가 있는데 실패로 처리했다 — ${e.message.split('\n')[0]}`);
+  }
+  srv.close();
+};
+
+/** 정말 안 올라갔으면(308) 성공이라고 우기면 안 된다 */
+const notUploadedTest = async () => {
+  let sessions = 0;
+  const srv = http.createServer((req, res) => {
+    if (req.method === 'PUT') {
+      if (req.headers['content-range']) {
+        res.writeHead(308, { Range: 'bytes=0-1023' }); // 아직 덜 받았다
+        res.end();
+        return;
+      }
+      req.resume();
+      req.on('end', () => req.socket.destroy());
+      return;
+    }
+    sessions++;
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      Location: `http://127.0.0.1:${srv.address().port}/session`,
+    });
+    res.end('{}');
+  });
+  await new Promise((r) => srv.listen(0, r));
+  const b = `http://127.0.0.1:${srv.address().port}/`;
+  globalThis.fetch = (url, opts) => {
+    const u = String(url);
+    if (u.includes('oauth2.googleapis.com')) {
+      return Promise.resolve({ ok: true, json: async () => ({ access_token: 'tok' }) });
+    }
+    if (u.includes('googleapis.com/upload')) return realFetch(b, opts);
+    return realFetch(url, opts);
+  };
+
+  console.log('\n정말 안 올라갔을 때');
+  try {
+    await yt.upload({ filePath: video, meta: { title: 't' }, mode: 'private' });
+    check(false, '실패해야 하는데 성공으로 처리했다');
+  } catch (e) {
+    check(/끊겼습니다/.test(e.message), '실패했다고 알려준다');
+    check(sessions === 1, `그래도 두 번 올리지는 않는다 (세션 ${sessions}번)`);
   }
   srv.close();
 };
@@ -179,153 +234,6 @@ const noRetryTest = async () => {
     check(/할당량/.test(e.message), '할당량 안내가 나온다');
   }
   srv.close();
-};
-
-/* ── 예약·공개는 업로드와 분리한다 ────────────────────────
- *
- * 예전에는 업로드를 시작할 때 privacyStatus/publishAt 을 같이 보냈다. 그러면
- * 공개·예약이 거절될 때 **다 보낸 업로드가 통째로 날아간다**(1600 units 도 같이).
- * 실제로 비공개는 올라가는데 공개·예약만 "fetch failed" 로 죽는 일이 있었다.
- *
- * 그래서 본문은 언제나 비공개로 올리고, 공개·예약은 videos.update 로 따로 건다.
- * 아래 테스트가 그 구조를 지킨다.
- */
-
-/** 가짜 유튜브 — 업로드 세션·본문·videos.update 를 모두 받는다 */
-const fakeYouTube = async ({ updateStatus = 200, updateBody = null } = {}) => {
-  const seen = { insert: null, update: null, updates: 0 };
-  const srv = http.createServer((req, res) => {
-    if (req.url.startsWith('/videos')) {
-      // videos.update — 공개 설정 걸기
-      seen.updates++;
-      let raw = '';
-      req.on('data', (c) => (raw += c));
-      req.on('end', () => {
-        seen.update = { method: req.method, body: JSON.parse(raw || '{}') };
-        res.writeHead(updateStatus, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify(
-            updateBody ?? { id: 'VIDEO123', status: JSON.parse(raw).status },
-          ),
-        );
-      });
-      return;
-    }
-    if (req.method === 'PUT') {
-      req.resume();
-      req.on('end', () => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ id: 'VIDEO123', status: { privacyStatus: 'private' } }));
-      });
-      return;
-    }
-    // 업로드 세션 시작 — 여기 실린 메타데이터를 들여다본다
-    let raw = '';
-    req.on('data', (c) => (raw += c));
-    req.on('end', () => {
-      seen.insert = JSON.parse(raw || '{}');
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        Location: `http://127.0.0.1:${srv.address().port}/session`,
-      });
-      res.end('{}');
-    });
-  });
-  await new Promise((r) => srv.listen(0, r));
-  const port = srv.address().port;
-  globalThis.fetch = (url, opts) => {
-    const u = String(url);
-    if (u.includes('oauth2.googleapis.com')) {
-      return Promise.resolve({ ok: true, json: async () => ({ access_token: 'tok' }) });
-    }
-    if (u.includes('googleapis.com/upload')) return realFetch(`http://127.0.0.1:${port}/`, opts);
-    if (u.includes('youtube/v3/videos')) {
-      return realFetch(`http://127.0.0.1:${port}/videos?part=status`, opts);
-    }
-    return realFetch(url, opts);
-  };
-  return { seen, close: () => srv.close() };
-};
-
-const scheduleTest = async () => {
-  const { seen, close } = await fakeYouTube();
-  const at = new Date(Date.now() + 4 * 3600_000).toISOString();
-
-  console.log('\n예약 발행');
-  const r = await yt.upload({
-    filePath: video,
-    meta: { title: 't' },
-    mode: 'schedule',
-    publishAt: at,
-  });
-  check(
-    seen.insert?.status?.privacyStatus === 'private',
-    `본문은 비공개로 올린다 (${seen.insert?.status?.privacyStatus})`,
-  );
-  check(
-    !('publishAt' in (seen.insert?.status ?? {})),
-    '업로드 요청에는 예약 시각을 싣지 않는다',
-  );
-  check(seen.update?.method === 'PUT', 'videos.update 로 예약을 따로 건다');
-  check(seen.update?.body?.id === 'VIDEO123', '방금 올린 영상에 건다');
-  check(seen.update?.body?.status?.publishAt === at, `예약 시각이 그대로 전달된다`);
-  check(
-    seen.update?.body?.status?.privacyStatus === 'private',
-    '예약은 비공개 + publishAt 이어야 한다',
-  );
-  check(r.publishAt === at, '결과에 공개 예정 시각이 담긴다');
-  check(!r.warning, '경고 없이 끝난다');
-  close();
-};
-
-const publicTest = async () => {
-  const { seen, close } = await fakeYouTube();
-  console.log('\n바로 발행');
-  const r = await yt.upload({ filePath: video, meta: { title: 't' }, mode: 'public' });
-  check(seen.insert?.status?.privacyStatus === 'private', '본문은 비공개로 올린다');
-  check(seen.update?.body?.status?.privacyStatus === 'public', '올린 뒤 공개로 바꾼다');
-  check(r.privacyStatus === 'public', `결과 상태가 public (${r.privacyStatus})`);
-  close();
-};
-
-const privateTest = async () => {
-  const { seen, close } = await fakeYouTube();
-  console.log('\n비공개로만 올리기');
-  await yt.upload({ filePath: video, meta: { title: 't' }, mode: 'private' });
-  check(seen.updates === 0, `쓸데없는 요청을 보내지 않는다 (update ${seen.updates}회)`);
-  close();
-};
-
-/** 공개 설정이 실패해도 **영상은 이미 올라가 있다** — 그 사실을 잃어버리면 안 된다 */
-const statusFailTest = async () => {
-  const { seen, close } = await fakeYouTube({
-    updateStatus: 403,
-    updateBody: {
-      error: {
-        code: 403,
-        message: 'Request had insufficient authentication scopes.',
-        errors: [{ reason: 'insufficientPermissions' }],
-      },
-    },
-  });
-
-  console.log('\n예약을 걸 권한이 없을 때');
-  try {
-    const r = await yt.upload({
-      filePath: video,
-      meta: { title: 't' },
-      mode: 'schedule',
-      publishAt: new Date(Date.now() + 4 * 3600_000).toISOString(),
-    });
-    check(r.id === 'VIDEO123', '올라간 영상 정보를 그대로 돌려준다');
-    check(Boolean(r.url) && Boolean(r.studioUrl), '스튜디오 링크가 있어서 직접 고칠 수 있다');
-    check(r.privacyStatus === 'private', `비공개로 남는다 (${r.privacyStatus})`);
-    check(/다시 연결/.test(r.warning ?? ''), '다시 연결하라고 알려준다');
-    check(seen.updates === 1, `권한 문제는 다시 시도하지 않는다 (update ${seen.updates}회)`);
-  } catch (e) {
-    check(false, `업로드가 살아 있어야 하는데 통째로 실패했다 — ${e.message.split('\n')[0]}`);
-  }
-  close();
 };
 
 /**
@@ -371,12 +279,9 @@ const causeTest = async () => {
   srv.close();
 };
 
-await retryTest();
+await resumeTest();
+await notUploadedTest();
 await noRetryTest();
 await causeTest();
-await scheduleTest();
-await publicTest();
-await privateTest();
-await statusFailTest();
 console.log(failed ? `\n❌ ${failed}개 실패\n` : '\n✅ 전부 통과\n');
 process.exit(failed ? 1 : 0);

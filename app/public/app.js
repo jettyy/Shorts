@@ -920,28 +920,11 @@ function renderYtState(st) {
       ? '계정 연결이 필요합니다'
       : 'OAuth 클라이언트 등록이 필요합니다';
 
-  /*
-   * 예약·공개를 걸려면 "계정 관리" 권한이 필요하다. 예전에 연결한 계정은
-   * 업로드 권한만 갖고 있어서 **영상은 올라가고 예약만 실패한다.**
-   * 다 올린 뒤에 알면 허무하니 올리기 전에 알려준다.
-   */
-  $('#ytScopeWarn').classList.toggle('hidden', !(ready && st.canSchedule === false));
-
   // 업로드 영역이 열리고 기본값(예약 발행)이 선택돼 있으면 추천 시각을 채워둔다
   if (ready && document.querySelector('input[name="ytMode"]:checked')?.value === 'schedule') {
     fillNextSlot();
   }
 }
-
-/** 권한을 다시 받기 위한 재연결 — 연결을 끊고 곧바로 로그인 창을 연다 */
-$('#btnYtReconnect').addEventListener('click', async () => {
-  try {
-    renderYtState(await api('/api/youtube/disconnect', { method: 'POST' }));
-    $('#btnYtConnect').click();
-  } catch (e) {
-    toast(e.message, true);
-  }
-});
 
 const refreshYt = async () => renderYtState(await api('/api/youtube/status'));
 
@@ -1107,20 +1090,7 @@ $('#btnYtUpload').addEventListener('click', async () => {
 
     const es = new EventSource(`/api/youtube/upload/stream?job=${jobId}`);
     es.addEventListener('progress', (ev) => {
-      const { sent, total, retry, phase } = JSON.parse(ev.data);
-      // 끊겨서 다시 보내는 중 — 진행률을 0으로 되돌리고 이유를 알려준다
-      if (retry) {
-        $('#ytPhase').textContent = `연결이 끊겨서 다시 올리는 중… (${retry + 1}번째 시도)`;
-        $('#ytBar').style.width = '0%';
-        return;
-      }
-      // 본문은 다 올라갔고, 이제 공개 설정을 거는 중
-      if (phase) {
-        $('#ytPhase').textContent =
-          phase === 'schedule' ? '올라갔습니다 — 예약을 거는 중…' : '올라갔습니다 — 공개로 바꾸는 중…';
-        $('#ytBar').style.width = '100%';
-        return;
-      }
+      const { sent, total } = JSON.parse(ev.data);
       if (!total) return;
       $('#ytPhase').textContent =
         `업로드 중 — ${(sent / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB`;
@@ -1132,20 +1102,14 @@ $('#btnYtUpload').addEventListener('click', async () => {
       btn.disabled = false;
       $('#ytProgressBox').classList.add('hidden');
       const box = $('#ytResult');
-      /*
-       * 본문은 올라갔는데 공개·예약만 실패한 경우가 있다(warning).
-       * 이때 "실패"로만 보여주면 이미 올라간 영상을 못 찾고 또 올리게 된다.
-       * 올라갔다는 사실과 링크를 먼저 주고, 남은 할 일을 밑에 붙인다.
-       */
-      box.className = r.warning ? 'yt-result warn' : 'yt-result';
+      box.className = 'yt-result';
       box.innerHTML =
         `<b>올라갔습니다.</b> 상태: ${r.privacyStatus}` +
         (r.publishAt ? ` · 공개 예정 ${new Date(r.publishAt).toLocaleString('ko-KR')}` : '') +
         `<br><a href="${r.url}" target="_blank" rel="noopener">영상 보기</a> · ` +
-        `<a href="${r.studioUrl}" target="_blank" rel="noopener">스튜디오에서 수정</a>` +
-        (r.warning ? `<div class="yt-warn">${linkify(r.warning)}</div>` : '');
+        `<a href="${r.studioUrl}" target="_blank" rel="noopener">스튜디오에서 수정</a>`;
       box.classList.remove('hidden');
-      toast(r.warning ? '올라갔지만 공개 설정은 실패했습니다' : '유튜브 업로드 완료', Boolean(r.warning));
+      toast('유튜브 업로드 완료');
     });
     es.addEventListener('error', (ev) => {
       es.close();

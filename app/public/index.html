@@ -256,12 +256,13 @@
           <label>태그 (쉼표로 구분) <input id="ytTags" /></label>
 
           <div class="mode-row">
-            <label class="radio"><input type="radio" name="ytMode" value="schedule" checked /> 예약 발행</label>
-            <label class="radio"><input type="radio" name="ytMode" value="public" /> 바로 발행</label>
-            <label class="radio"><input type="radio" name="ytMode" value="private" /> 비공개로만 올리기</label>
+            <label class="radio"><input type="radio" name="ytMode" value="private" checked /> 비공개로 올리기</label>
+            <label class="radio"><input type="radio" name="ytMode" value="schedule" /> 예약 발행</label>
+            <label class="radio"><input type="radio" name="ytMode" value="public" /> 바로 공개</label>
           </div>
 
-          <div id="ytWhenRow">
+          <!-- 기본값이 비공개라 처음엔 접어둔다. [예약 발행] 을 고르면 열린다 -->
+          <div id="ytWhenRow" class="hidden">
             <label>공개 시각 (년-월-일 시:분)
               <input id="ytWhen" type="datetime-local" step="300" />
             </label>
@@ -269,13 +270,6 @@
               <span class="slot-note" id="ytSlotNote">추천 시각을 계산하는 중…</span>
               <button class="ghost small" id="btnYtSlot">다시 추천</button>
             </div>
-          </div>
-
-          <!-- 예전 권한으로 연결해둔 계정 — 올리기 전에 미리 알려준다 -->
-          <div class="yt-scope-warn hidden" id="ytScopeWarn">
-            지금 연결에는 <b>업로드 권한만</b> 있어서, 영상은 올라가지만
-            <b>예약·공개 설정은 실패합니다.</b>
-            <button class="ghost small" id="btnYtReconnect">계정 다시 연결</button>
           </div>
 
           <div class="actions">
