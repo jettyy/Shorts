@@ -547,14 +547,52 @@ function renderFinal(build) {
     $('#fullAudio').src = build.url;
   }
 
-  // 이미 만들어둔 영상이 있으면 업로드 섹션을 바로 연다
+  /*
+   * 지난 작업의 완성본·문구가 화면에 남아 있으면 안 된다.
+   * 일단 싹 지우고, "지금 대본으로 만든 영상"이 있을 때만 다시 연다.
+   */
+  clearOutputUI();
   api('/api/videos')
-    .then(({ latest }) => {
-      if (!latest) return;
+    .then(({ latest, current }) => {
+      // current=false 면 output 폴더에 남은 지난 영상이다. 그걸로 문구를 열면 안 된다.
+      if (!latest || !current) return;
       $('#publishBox').classList.remove('hidden');
       return loadPublishCopy().then(() => refreshYt());
     })
     .catch(() => {});
+}
+
+/**
+ * 4단계 출력 영역을 비운다 (완성본 미리보기 · 저장 안내 · 업로드 문구 · 유튜브 입력란).
+ *
+ * 이게 없으면 새 원문으로 다시 시작해도 4단계에는 이전 영상의 문구가 그대로 남는다.
+ */
+function clearOutputUI() {
+  publishCopy = null;
+
+  $('#resultBox').classList.add('hidden');
+  $('#resultVideo').removeAttribute('src');
+  $('#renderBox').classList.add('hidden');
+  $('#renderBar').style.width = '0%';
+  $('#btnRender').disabled = false;
+
+  const note = $('#savedNote');
+  note.classList.add('hidden');
+  note.innerHTML = '';
+
+  $('#btnDownload').removeAttribute('href');
+  $('#btnDownloadCopy').removeAttribute('href');
+
+  $('#publishBox').classList.add('hidden');
+  $('#copyList').innerHTML = '';
+  $('#ytTitle').value = '';
+  $('#ytDesc').value = '';
+  $('#ytTags').value = '';
+  $('#ytResult').classList.add('hidden');
+  $('#ytProgressBox').classList.add('hidden');
+
+  $('#audioPreview').classList.add('hidden');
+  $('#fullAudio').removeAttribute('src');
 }
 
 $('#btnBack3').addEventListener('click', () => goStep(3));
@@ -651,11 +689,46 @@ function autoSave(videoUrl, videoName, copyUrl, copyName) {
   note.classList.remove('hidden');
 }
 
+/** 새 영상 만들기 — 화면을 1단계 상태로 되돌린다 (서버의 대본·녹음은 그대로 둔다) */
 $('#btnRestart').addEventListener('click', () => {
   $('#sourceText').value = '';
   $('#charCount').textContent = '0';
-  $('#resultBox').classList.add('hidden');
+  clearOutputUI();
   goStep(1);
+});
+
+/**
+ * 전부 지우고 처음부터 — 서버에 남은 대본·원문·녹음까지 지운다.
+ * 이걸 해야 다음 작업의 4단계에 이전 영상의 문구가 남지 않는다.
+ * (만들어 둔 영상 파일은 지우지 않는다 — 되돌릴 수 없는 결과물이다)
+ */
+$('#btnResetAll').addEventListener('click', async () => {
+  const ok = confirm(
+    '원문·대본·녹음·합친 내레이션을 전부 지웁니다.\n' +
+      '이미 만든 영상 파일(output 폴더)은 그대로 둡니다.\n\n' +
+      '계속할까요?',
+  );
+  if (!ok) return;
+
+  busy('전부 지우는 중…');
+  try {
+    const r = await api('/api/reset', { method: 'POST' });
+
+    state.script = null;
+    state.clips = {};
+    $('#sourceText').value = '';
+    $('#charCount').textContent = '0';
+    $('#cardList').innerHTML = '';
+    $('#recList').innerHTML = '';
+    clearOutputUI();
+    goStep(1);
+
+    toast(r.clips > 0 ? `초기화했습니다 (녹음 ${r.clips}개 삭제)` : '초기화했습니다');
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    idle();
+  }
 });
 
 /* ── 단계 버튼 직접 클릭 ─────────────────────────────── */
@@ -706,8 +779,10 @@ $('#steps').addEventListener('click', (e) => {
     }
 
     if (st.hasScript) {
-      state.script = await api('/api/script');
-      if (state.script?.cards?.length) {
+      const saved = await api('/api/script');
+      // 초기화 뒤에는 카드가 없는 빈 대본이 남는다. 그건 "대본 없음"으로 본다.
+      if (saved?.cards?.length) {
+        state.script = saved;
         renderScript();
         toast(`이전 작업을 불러왔습니다 (카드 ${state.script.cards.length}장)`);
       }

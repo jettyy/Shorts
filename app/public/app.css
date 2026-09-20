@@ -390,3 +390,11 @@ button, .primary {
   border-color: rgba(232, 180, 74, 0.4); background: rgba(232, 180, 74, 0.08); color: #ffe6b0;
 }
 .saved-note b { color: #fff; }
+
+/* ── 전부 초기화 ────────────────────────── */
+.reset-box {
+  margin-top: 40px; padding-top: 26px; border-top: 1px solid var(--line);
+}
+.reset-box h3 { font-size: 17px; margin: 0 0 8px; color: var(--text-2); }
+.reset-box .hint { max-width: 620px; }
+.reset-box .actions { margin-top: 14px; }

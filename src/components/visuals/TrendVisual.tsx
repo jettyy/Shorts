@@ -1,6 +1,6 @@
 import React from 'react';
 import { BASE, type Accent } from '../../theme';
-import { AXIS, CHART, GRID, SURFACE_RING } from '../chartTheme';
+import { AXIS, CHART, GRID } from '../chartTheme';
 import { useDraw } from './useReveal';
 import type { TrendVisual as Data } from '../../types';
 
@@ -71,7 +71,7 @@ export const TrendVisual: React.FC<{ data: Data; accent: Accent }> = ({ data, ac
               cx={x(i)}
               cy={y(p.value)}
               r={CHART.dotSize / 2 + 4}
-              fill={SURFACE_RING}
+              fill={accent.surface}
             />
             <circle
               cx={x(i)}

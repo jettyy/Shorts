@@ -46,11 +46,11 @@
     <div class="grid2">
       <label>영상 테마
         <select id="accent">
-          <option value="gold">gold — 돈·혜택 (지원금, 환급)</option>
-          <option value="mint">mint — 안내·절차 (신청 방법)</option>
-          <option value="coral">coral — 경고·마감 (놓치면 손해)</option>
-          <option value="violet">violet — 분석·비교</option>
-          <option value="ice">ice — 통계·동향</option>
+          <option value="gold">gold — 깊은 남색·격자 · 돈·혜택 (지원금, 환급)</option>
+          <option value="mint">mint — 짙은 청록·사선 · 안내·절차 (신청 방법)</option>
+          <option value="coral">coral — 자줏빛 적갈·점무늬 · 경고·마감 (놓치면 손해)</option>
+          <option value="violet">violet — 진한 보라·동심원 · 분석·비교</option>
+          <option value="ice">ice — 무채색 강철·주사선 · 통계·동향</option>
         </select>
       </label>
       <label>카드 장수
@@ -247,6 +247,19 @@
           </div>
           <div class="yt-result hidden" id="ytResult"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ── 전부 지우고 처음부터 ── -->
+    <div class="reset-box">
+      <h3>다 끝났나요?</h3>
+      <p class="hint">
+        지금까지의 <b>원문·대본·녹음·합친 내레이션</b>을 전부 지우고 1단계로 돌아갑니다.
+        다음 작업에 이전 영상의 문구가 남지 않습니다.
+        이미 만들어 둔 <b>영상 파일은 지우지 않습니다</b> (output 폴더에 그대로 있습니다).
+      </p>
+      <div class="actions">
+        <button class="danger" id="btnResetAll">전부 지우고 처음부터</button>
       </div>
     </div>
   </section>

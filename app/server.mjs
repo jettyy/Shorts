@@ -72,6 +72,8 @@ const json = (res, code, body) => {
   res.writeHead(code, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(payload),
+    // 대본을 새로 만들었는데 브라우저가 이전 응답을 재사용하면 옛날 문구가 그대로 보인다
+    'Cache-Control': 'no-store',
   });
   res.end(payload);
 };
@@ -607,7 +609,8 @@ const routes = {
     json(res, 200, {
       install: checkInstall(),
       claudeCli: hasClaudeCli(),
-      hasScript: Boolean(script),
+      // 초기화 뒤에는 카드가 없는 빈 대본이 남는다. 그건 대본이 없는 것으로 본다.
+      hasScript: Boolean(script?.cards?.length),
       cardCount: script?.cards?.length ?? 0,
       recordedCards: clips.length,
       browser: findBrowser() ?? 'auto',
@@ -1038,7 +1041,54 @@ const routes = {
           .map((f) => ({ file: f, mtime: statSync(join(OUTPUT_DIR, f)).mtimeMs }))
           .sort((a, b) => b.mtime - a.mtime)
       : [];
-    json(res, 200, { videos: files.map((f) => f.file), latest: lastRendered ?? files[0]?.file ?? null });
+    const latest = files.find((f) => f.file === lastRendered) ?? files[0] ?? null;
+
+    /**
+     * 지금 대본으로 만든 영상인지.
+     *
+     * 새 원문으로 작업을 다시 시작하면 대본은 새것인데 output 폴더에는 지난 영상이 남아 있다.
+     * 그걸 "완성본"으로 보고 업로드 문구를 열면 이전 영상의 문구가 그대로 남는다.
+     * 그래서 대본 파일보다 나중에 만들어진 영상일 때만 완성본으로 친다.
+     */
+    const scriptAt = existsSync(SCRIPT_PATH) ? statSync(SCRIPT_PATH).mtimeMs : 0;
+    json(res, 200, {
+      videos: files.map((f) => f.file),
+      latest: latest?.file ?? null,
+      /** 이 영상이 현재 대본으로 만든 것인가 */
+      current: Boolean(latest && latest.mtime >= scriptAt),
+    });
+  },
+
+  /**
+   * 전부 초기화.
+   * 대본·녹음·합친 내레이션·원문을 지운다. 이미 만들어 둔 영상 파일(output/)은 남긴다.
+   * (되돌릴 수 없는 결과물이라 앱이 임의로 지우지 않는다)
+   */
+  'POST /api/reset': async (req, res) => {
+    let clips = 0;
+    if (existsSync(CLIPS_DIR)) {
+      for (const f of readdirSync(CLIPS_DIR)) {
+        if (f.endsWith('.webm') || f.endsWith('.wav')) clips += 1;
+        rmSync(join(CLIPS_DIR, f), { force: true });
+      }
+    }
+    if (existsSync(AUDIO_DIR)) {
+      for (const f of readdirSync(AUDIO_DIR)) rmSync(join(AUDIO_DIR, f), { force: true });
+    }
+    rmSync(join(SOURCE_DIR, 'current.txt'), { force: true });
+
+    // script.json 은 지우지 않는다. src/Root.tsx 가 정적으로 import 해서 없으면 빌드가 깨진다.
+    // 대신 카드가 없는 빈 대본으로 되돌린다.
+    saveScript({
+      topic: '',
+      accent: 'gold',
+      source: { publisher: '', title: '', checkedOn: '' },
+      cards: [],
+    });
+    lastRendered = null;
+
+    console.log(`[초기화] 대본·원문 초기화, 녹음 ${clips}개 삭제`);
+    json(res, 200, { ok: true, clips });
   },
 
   /* ── 유튜브 ─────────────────────────────────────────── */
