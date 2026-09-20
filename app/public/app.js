@@ -417,10 +417,25 @@ async function startRecording(index, btn) {
     return showMicError(index, '이 브라우저는 MediaRecorder 를 지원하지 않습니다.');
   }
 
-  // 세밀한 옵션이 장치와 안 맞아 실패하는 경우가 있어, 실패하면 기본 설정으로 한 번 더 시도한다
+  /**
+   * autoGainControl 을 반드시 끈다.
+   *
+   * 켜두면 브라우저가 녹음 중에 계속 볼륨을 조절해서,
+   * 말을 시작할 때는 크다가 점점 작아진다. 카드마다 이게 반복되니
+   * 이어 붙였을 때 소리가 커졌다 작아졌다 한다.
+   * 음량은 녹음이 끝난 뒤 서버에서 한 번에 고르게 맞춘다(loudnorm).
+   *
+   * echoCancellation 도 끈다. 스피커 소리를 지우려고 신호를 건드리는데,
+   * 혼자 내레이션을 녹음할 때는 득보다 실이 크다.
+   * noiseSuppression 은 음량을 흔들지 않고 잡음만 줄여주므로 켜둔다.
+   */
   try {
     state.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: {
+        autoGainControl: false,
+        echoCancellation: false,
+        noiseSuppression: true,
+      },
     });
   } catch (first) {
     try {

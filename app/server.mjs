@@ -190,6 +190,54 @@ const readMeta = () => {
 };
 const writeMeta = (meta) => writeFileSync(META_PATH, JSON.stringify(meta), 'utf8');
 
+// 예전 meta.json 은 길이만 숫자로 담았다. 두 형식을 모두 읽는다.
+const metaDuration = (entry) => (typeof entry === 'number' ? entry : entry?.duration);
+const metaLoudness = (entry) => (typeof entry === 'number' ? undefined : entry?.loudness);
+
+/**
+ * 음량 측정 (loudnorm 1차 패스).
+ *
+ * 카드마다 녹음 음량이 제각각이면 이어 붙였을 때 커졌다 작아졌다 한다.
+ * 먼저 재본 값을 가지고 2차 패스에서 일정한 이득만 걸어주면
+ * 음량이 출렁이지 않고 평평하게 맞는다.
+ */
+const measureLoudness = async (file) => {
+  const { err } = await runFfmpeg([
+    '-hide_banner', '-i', file,
+    '-af', `loudnorm=I=${LOUDNESS_TARGET}:TP=${LOUDNESS_PEAK}:LRA=11:print_format=json`,
+    '-f', 'null', '-',
+  ]);
+  const blocks = err.match(/\{[^{}]*"input_i"[\s\S]*?\}/g);
+  if (!blocks?.length) return null;
+  try {
+    const m = JSON.parse(blocks[blocks.length - 1]);
+    const i = Number(m.input_i);
+    // 거의 무음인 클립까지 끌어올리면 잡음만 커진다
+    if (!Number.isFinite(i) || i < -50) return null;
+    return {
+      i: m.input_i,
+      tp: m.input_tp,
+      lra: m.input_lra,
+      thresh: m.input_thresh,
+      offset: m.target_offset,
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** 온라인 영상 내레이션에 무난한 값 */
+const LOUDNESS_TARGET = -16;
+const LOUDNESS_PEAK = -1.5;
+
+/** 2차 패스 필터 — 측정값이 없으면 음량은 건드리지 않는다 */
+const loudnormFilter = (n) =>
+  n
+    ? `loudnorm=I=${LOUDNESS_TARGET}:TP=${LOUDNESS_PEAK}:LRA=11:` +
+      `measured_I=${n.i}:measured_TP=${n.tp}:measured_LRA=${n.lra}:` +
+      `measured_thresh=${n.thresh}:offset=${n.offset}:linear=true`
+    : null;
+
 /**
  * `claude` 실행 파일의 실제 경로를 찾는다.
  *
@@ -415,6 +463,7 @@ const buildAudio = async () => {
 
   const { speed, gapSec } = loadSettings();
   const meta = readMeta();
+  let metaDirty = false;
   const parts = [];
   let recorded = 0;
 
@@ -424,10 +473,22 @@ const buildAudio = async () => {
     let dur;
 
     if (existsSync(clip)) {
-      const spoken = (meta[i] ?? (await probeDuration(clip))) / speed;
-      dur = Math.max(toTenth(spoken + gapSec), 2);
-      // 빠르게 만든 뒤(atempo), 카드 길이에 정확히 맞도록 뒤에 무음을 덧댄다
-      const filter = speed === 1 ? 'apad' : `atempo=${speed},apad`;
+      const entry = meta[i];
+      const rawDur = metaDuration(entry) ?? (await probeDuration(clip));
+      dur = Math.max(toTenth(rawDur / speed + gapSec), 2);
+
+      // 카드마다 음량이 들쭉날쭉하지 않도록 먼저 재보고(한 번만) 캐시해둔다
+      let loudness = metaLoudness(entry);
+      if (loudness === undefined) {
+        loudness = await measureLoudness(clip);
+        meta[i] = { duration: rawDur, loudness };
+        metaDirty = true;
+      }
+
+      // 음량 맞추기 → 속도 → 카드 길이에 맞게 뒤에 무음 덧대기
+      const filter = [loudnormFilter(loudness), speed === 1 ? null : `atempo=${speed}`, 'apad']
+        .filter(Boolean)
+        .join(',');
       await runFfmpeg([
         '-y', '-i', clip, '-af', filter, '-t', String(dur),
         '-ar', '48000', '-ac', '1', padded,
@@ -444,6 +505,8 @@ const buildAudio = async () => {
     script.cards[i].durationSec = dur;
     parts.push(padded);
   }
+
+  if (metaDirty) writeMeta(meta);
 
   const totalSec = toTenth(script.cards.reduce((a, c) => a + c.durationSec, 0));
 
@@ -749,7 +812,8 @@ const routes = {
       await runFfmpeg(['-y', '-i', file, '-ar', '48000', '-ac', '1', fixed]);
       const duration = await probeDuration(fixed);
       const meta = readMeta();
-      meta[index] = duration;
+      // 길이와 음량을 함께 캐시해둔다 (합칠 때마다 다시 재지 않도록)
+      meta[index] = { duration, loudness: await measureLoudness(fixed) };
       writeMeta(meta);
       json(res, 200, { duration, url: `/clip/${index}?t=${Date.now()}` });
     } catch (e) {
@@ -785,11 +849,11 @@ const routes = {
         list.push({ index: i, duration: 0 });
         continue;
       }
-      if (meta[i] === undefined) {
-        meta[i] = await probeDuration(f);
+      if (metaDuration(meta[i]) === undefined) {
+        meta[i] = { duration: await probeDuration(f), loudness: await measureLoudness(f) };
         dirty = true;
       }
-      list.push({ index: i, duration: meta[i] });
+      list.push({ index: i, duration: metaDuration(meta[i]) });
     }
     if (dirty) writeMeta(meta);
     json(res, 200, { clips: list });
