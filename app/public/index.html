@@ -144,14 +144,27 @@
           <button data-gap="0.4" class="on">넉넉히 0.4초</button>
         </div>
       </div>
+      <div class="tempo-row">
+        <span class="tempo-label">배경음악</span>
+        <select id="bgmSelect" class="bgm-select"></select>
+      </div>
+      <div class="tempo-row" id="bgmVolRow">
+        <span class="tempo-label">음악 크기</span>
+        <input type="range" id="bgmVol" min="0" max="100" step="5" />
+        <span class="bgm-vol-num" id="bgmVolNum">50%</span>
+        <span class="bgm-vol-hint">내레이션 대비</span>
+      </div>
       <div class="tempo-note">
         속도를 올리면 목소리도 같이 빨라집니다(음정은 그대로). 여백은 속도와 상관없이 유지됩니다.<br>
-        <b>2배속은 넣지 않았습니다</b> — 도표를 읽을 시간이 없어지고 목소리가 부자연스러워집니다.
+        <b>2배속은 넣지 않았습니다</b> — 도표를 읽을 시간이 없어지고 목소리가 부자연스러워집니다.<br>
+        배경음악은 직접 합성해 만들기 때문에 <b>저작권 문제가 없습니다.</b>
+        말소리 대역(800~3000Hz)을 비워둬서 목소리를 가리지 않습니다.
+        목소리를 더 또렷하게 하려면 30% 근처로 내려보세요.
       </div>
     </div>
 
     <div class="preview-audio hidden" id="audioPreview">
-      <h3>합쳐진 내레이션 미리듣기</h3>
+      <h3 id="audioPreviewTitle">합쳐진 내레이션 미리듣기</h3>
       <audio id="fullAudio" controls></audio>
     </div>
 

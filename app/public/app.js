@@ -988,9 +988,26 @@ $('#btnMicCheck').addEventListener('click', async () => {
 /* ── 재생 속도 / 카드 사이 여백 ──────────────────────── */
 
 /** 고른 값에 맞춰 버튼 강조를 갱신한다 */
-function markTempo({ speed, gapSec }) {
+function markTempo({ speed, gapSec, bgm, bgmVolume, bgmPresets }) {
   $$('#speedSeg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === speed));
   $$('#gapSeg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.gap) === gapSec));
+
+  // 음악 종류는 서버가 알려준 목록으로 채운다
+  const select = $('#bgmSelect');
+  if (bgmPresets && select.options.length !== bgmPresets.length) {
+    select.innerHTML = bgmPresets
+      .map((p) => `<option value="${p.id}">${escapeHtml(p.label)} — ${escapeHtml(p.desc)}</option>`)
+      .join('');
+  }
+  if (bgm) select.value = bgm;
+
+  const off = bgm === 'none';
+  $('#bgmVolRow').classList.toggle('hidden', off);
+  $('#bgmVol').value = bgmVolume ?? 50;
+  $('#bgmVolNum').textContent = `${bgmVolume ?? 50}%`;
+  $('#audioPreviewTitle').textContent = off
+    ? '합쳐진 내레이션 미리듣기'
+    : '내레이션 + 배경음악 미리듣기';
 }
 
 /**
@@ -999,7 +1016,7 @@ function markTempo({ speed, gapSec }) {
  * 값을 여러 번 바꿔도 길이가 누적되지 않는다.
  */
 async function applyTempo(next) {
-  const buttons = $$('#speedSeg button, #gapSeg button');
+  const buttons = $$('#speedSeg button, #gapSeg button, #bgmSelect, #bgmVol');
   buttons.forEach((b) => (b.disabled = true));
   try {
     state.settings = await api('/api/settings', {
@@ -1030,4 +1047,16 @@ $('#gapSeg').addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn || btn.disabled) return;
   applyTempo({ ...state.settings, gapSec: Number(btn.dataset.gap) });
+});
+
+$('#bgmSelect').addEventListener('change', (e) => {
+  applyTempo({ ...state.settings, bgm: e.target.value });
+});
+
+// 끌고 있는 동안엔 숫자만 바꾸고, 손을 뗐을 때 한 번만 다시 합친다
+$('#bgmVol').addEventListener('input', (e) => {
+  $('#bgmVolNum').textContent = `${e.target.value}%`;
+});
+$('#bgmVol').addEventListener('change', (e) => {
+  applyTempo({ ...state.settings, bgmVolume: Number(e.target.value) });
 });

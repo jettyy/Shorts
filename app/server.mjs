@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './prompt.mjs';
 import { withPublishCopy } from './publish-copy.mjs';
 import { createYouTube } from './youtube.mjs';
+import { BGM_PRESETS, renderBgm } from './bgm.mjs';
 import { findBrowser } from '../scripts/find-browser.mjs';
 import { setupFonts } from '../scripts/setup-fonts.mjs';
 
@@ -409,27 +410,53 @@ const SETTINGS_PATH = join(root, 'app', 'data', 'render-settings.json');
 
 /** 목소리가 자연스럽고 도표도 읽히는 범위만 허용한다. 2배속은 넣지 않는다. */
 const ALLOWED_SPEEDS = [1, 1.1, 1.25];
-const DEFAULT_SETTINGS = { speed: 1, gapSec: 0.4 };
+/** 배경음악은 내레이션 대비 몇 %로 깔지 (100% = 목소리와 같은 크기) */
+const DEFAULT_SETTINGS = { speed: 1, gapSec: 0.4, bgm: 'calm', bgmVolume: 50 };
+
+const normalizeSettings = (s = {}) => ({
+  speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : DEFAULT_SETTINGS.speed,
+  gapSec: Math.min(Math.max(Number(s.gapSec) || DEFAULT_SETTINGS.gapSec, 0.15), 0.8),
+  bgm: BGM_PRESETS.some((p) => p.id === s.bgm) ? s.bgm : DEFAULT_SETTINGS.bgm,
+  bgmVolume: Math.min(
+    Math.max(Math.round(Number(s.bgmVolume ?? DEFAULT_SETTINGS.bgmVolume)), 0),
+    100,
+  ),
+});
 
 const loadSettings = () => {
   try {
-    const s = JSON.parse(readFileSync(SETTINGS_PATH, 'utf8'));
-    return {
-      speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : DEFAULT_SETTINGS.speed,
-      gapSec: Math.min(Math.max(Number(s.gapSec) || DEFAULT_SETTINGS.gapSec, 0.15), 0.8),
-    };
+    return normalizeSettings(JSON.parse(readFileSync(SETTINGS_PATH, 'utf8')));
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 };
 
 const saveSettings = (s) => {
-  const next = {
-    speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : DEFAULT_SETTINGS.speed,
-    gapSec: Math.min(Math.max(Number(s.gapSec) || DEFAULT_SETTINGS.gapSec, 0.15), 0.8),
-  };
+  const next = normalizeSettings(s);
   writeFileSync(SETTINGS_PATH, JSON.stringify(next, null, 2), 'utf8');
   return next;
+};
+
+/**
+ * 영상 길이에 맞는 배경음악 파일을 준비한다.
+ * 같은 종류·같은 길이면 다시 만들지 않는다(합성에 1초쯤 걸린다).
+ */
+const BGM_PATH = join(root, 'app', 'data', 'bgm.wav');
+const BGM_STAMP = join(root, 'app', 'data', 'bgm.json');
+
+const prepareBgm = (id, seconds) => {
+  const want = { id, seconds: Math.round(seconds * 10) / 10 };
+  try {
+    const have = JSON.parse(readFileSync(BGM_STAMP, 'utf8'));
+    if (have.id === want.id && have.seconds === want.seconds && existsSync(BGM_PATH)) return BGM_PATH;
+  } catch {
+    /* 처음이거나 파일이 깨졌으면 새로 만든다 */
+  }
+  const wav = renderBgm(id, want.seconds);
+  if (!wav) return null;
+  writeFileSync(BGM_PATH, wav);
+  writeFileSync(BGM_STAMP, JSON.stringify(want), 'utf8');
+  return BGM_PATH;
 };
 
 /** 0.1초 단위로 맞춘다. 30fps에서 0.1초 = 정확히 3프레임이라 영상과 소리가 어긋나지 않는다. */
@@ -461,7 +488,7 @@ const buildAudio = async () => {
   const script = loadScript();
   if (!script) throw new Error('대본이 없습니다.');
 
-  const { speed, gapSec } = loadSettings();
+  const { speed, gapSec, bgm, bgmVolume } = loadSettings();
   const meta = readMeta();
   let metaDirty = false;
   const parts = [];
@@ -510,22 +537,71 @@ const buildAudio = async () => {
 
   const totalSec = toTenth(script.cards.reduce((a, c) => a + c.durationSec, 0));
 
-  if (recorded === 0) {
-    // 녹음이 하나도 없으면 무음 트랙을 붙이지 않는다
+  const hasBgm = bgm !== 'none' && bgmVolume > 0;
+
+  if (recorded === 0 && !hasBgm) {
+    // 녹음도 배경음악도 없으면 소리 트랙 자체를 붙이지 않는다
     delete script.narrationAudio;
     saveScript(script);
-    return { recorded: 0, totalSec, speed, gapSec, url: null };
+    return { recorded: 0, totalSec, speed, gapSec, bgm, bgmVolume, url: null };
   }
 
+  // 카드별 조각을 이어 붙여 목소리 트랙을 만든다 (녹음이 없으면 무음 트랙이 된다)
   const listFile = join(CLIPS_DIR, 'concat.txt');
   writeFileSync(listFile, parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
+  const voice = join(CLIPS_DIR, 'voice.wav');
+  await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-ar', '48000', voice]);
+
   const outMp3 = join(AUDIO_DIR, 'narration.mp3');
-  await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-b:a', '160k', outMp3]);
+
+  if (!hasBgm) {
+    await runFfmpeg(['-y', '-i', voice, '-b:a', '160k', outMp3]);
+  } else {
+    const bgmFile = prepareBgm(bgm, totalSec);
+    if (!bgmFile) throw new Error(`배경음악을 만들지 못했습니다: ${bgm}`);
+
+    /**
+     * 배경음악 크기는 "내레이션 대비 몇 %" 로 다룬다.
+     * 목소리는 이미 -16 LUFS 로 맞춰져 있으므로,
+     * 배경음악도 같은 기준으로 재서 원하는 비율만큼 낮춘 값으로 맞춘다.
+     * (50% = 목소리보다 6dB 아래)
+     */
+    const bgmLoud = await measureLoudness(bgmFile);
+    const ratioDb = 20 * Math.log10(Math.max(bgmVolume, 1) / 100);
+    const gainDb = bgmLoud
+      ? LOUDNESS_TARGET + ratioDb - Number(bgmLoud.i)
+      : ratioDb; // 못 쟀으면 비율만 적용
+    const mixed = join(CLIPS_DIR, 'mixed.wav');
+    await runFfmpeg([
+      '-y', '-i', voice, '-i', bgmFile,
+      '-filter_complex',
+      `[1:a]volume=${gainDb.toFixed(2)}dB,aformat=channel_layouts=mono[m];` +
+        `[0:a][m]amix=inputs=2:duration=first:normalize=0[a]`,
+      '-map', '[a]', '-ar', '48000', '-ac', '1', mixed,
+    ]);
+
+    // 섞고 나면 소리가 커져 찌그러질 수 있으니 전체를 다시 -16 LUFS 로 맞춘다
+    const mixLoud = await measureLoudness(mixed);
+    const finalFilter = loudnormFilter(mixLoud);
+    await runFfmpeg([
+      '-y', '-i', mixed,
+      ...(finalFilter ? ['-af', finalFilter] : []),
+      '-ar', '48000', '-b:a', '160k', outMp3,
+    ]);
+  }
 
   script.narrationAudio = 'audio/narration.mp3';
   saveScript(script);
 
-  return { recorded, totalSec, speed, gapSec, url: `/audio/narration.mp3?t=${Date.now()}` };
+  return {
+    recorded,
+    totalSec,
+    speed,
+    gapSec,
+    bgm,
+    bgmVolume,
+    url: `/audio/narration.mp3?t=${Date.now()}`,
+  };
 };
 
 /* ── 진행 상황 스트림 (SSE) ──────────────────────────────── */
@@ -940,12 +1016,20 @@ const routes = {
   /* ── 렌더 설정 ──────────────────────────────────────── */
 
   'GET /api/settings': async (req, res) => {
-    json(res, 200, { ...loadSettings(), allowedSpeeds: ALLOWED_SPEEDS });
+    json(res, 200, {
+      ...loadSettings(),
+      allowedSpeeds: ALLOWED_SPEEDS,
+      bgmPresets: BGM_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })),
+    });
   },
 
   'POST /api/settings': async (req, res) => {
     const body = JSON.parse((await readBody(req)).toString('utf8'));
-    json(res, 200, { ...saveSettings(body), allowedSpeeds: ALLOWED_SPEEDS });
+    json(res, 200, {
+      ...saveSettings(body),
+      allowedSpeeds: ALLOWED_SPEEDS,
+      bgmPresets: BGM_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })),
+    });
   },
 
   /** 플랫폼별 업로드 문구 */
