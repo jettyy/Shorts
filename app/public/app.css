@@ -201,7 +201,21 @@ button, .primary {
   background: linear-gradient(90deg, var(--gold), var(--gold-bright));
   transition: width 0.3s;
 }
-.rec-count { font-size: 13px; color: var(--text-3); margin-bottom: 20px; }
+.rec-count {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 13px; color: var(--text-3); margin-bottom: 20px;
+}
+.mic-report {
+  margin: -8px 0 22px; padding: 16px 18px; border-radius: var(--radius);
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.04);
+  font-size: 13.5px; line-height: 1.8; white-space: pre-line;
+}
+.mic-report .ok { color: var(--good); font-weight: 700; }
+.mic-report .bad { color: var(--bad); font-weight: 700; }
+.mic-report .verdict {
+  display: block; margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--line); color: var(--text);
+}
 .reclist { display: flex; flex-direction: column; gap: 14px; }
 .rec {
   border: 1px solid var(--line); border-radius: var(--radius);

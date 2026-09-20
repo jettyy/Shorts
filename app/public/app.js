@@ -330,7 +330,7 @@ function updateRecProgress() {
   const total = state.script.cards.length;
   const done = Object.keys(state.clips).length;
   $('#recBar').style.width = `${(done / total) * 100}%`;
-  $('#recCount').textContent = `${done} / ${total}장 녹음 완료`;
+  $('#recCountText').textContent = `${done} / ${total}장 녹음 완료`;
   $('#btnBuildAudio').textContent = done === 0 ? '녹음 없이 넘어가기 →' : '녹음 확정하고 다음 →';
 }
 
@@ -366,9 +366,9 @@ const micErrorMessage = (err) => {
     case 'NotAllowedError':
     case 'PermissionDeniedError':
       return (
-        '브라우저가 마이크 접근을 막았습니다.\n' +
-        '주소창 왼쪽 자물쇠(또는 마이크 아이콘) → 마이크 → 허용으로 바꾼 뒤,\n' +
-        '페이지를 새로고침하고 다시 눌러주세요.'
+        '브라우저가 마이크를 열지 못했습니다.\n' +
+        '사이트 권한을 이미 허용했다면 윈도우 설정이나 회사 정책에서 막힌 경우입니다.\n' +
+        '위의 [마이크 점검] 을 눌러 어느 단계에서 막혔는지 확인해주세요.'
       );
     case 'NotFoundError':
     case 'DevicesNotFoundError':
@@ -844,5 +844,116 @@ $('#btnYtUpload').addEventListener('click', async () => {
     });
   } catch (e) {
     showYtError(e.message);
+  }
+});
+
+/* ── 마이크 점검 ─────────────────────────────────────── */
+
+/**
+ * 마이크가 왜 안 되는지 브라우저에 직접 물어본다.
+ *
+ * "권한을 허용했는데도 안 된다" 는 경우가 많은데, 원인이 여러 단계에 걸쳐 있다.
+ *   사이트 권한 / 운영체제 권한 / 회사 정책 / 장치 자체
+ * 어느 단계에서 막혔는지는 아래 세 가지를 같이 봐야 알 수 있다.
+ *   1) permissions API 가 말하는 권한 상태
+ *   2) 실제로 잡히는 입력 장치 목록
+ *   3) getUserMedia 를 실제로 호출했을 때의 오류 이름
+ */
+async function diagnoseMic() {
+  const lines = [];
+  const mark = (ok, text) => `<span class="${ok ? 'ok' : 'bad'}">${ok ? '정상' : '문제'}</span> ${text}`;
+
+  // 1) 보안 컨텍스트
+  const secure = window.isSecureContext;
+  lines.push(mark(secure, `주소: ${location.origin} ${secure ? '(녹음 가능한 환경)' : '(보안 컨텍스트 아님)'}`));
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    lines.push(mark(false, '이 브라우저는 녹음(getUserMedia)을 지원하지 않습니다.'));
+    return { html: lines.join('\n'), verdict: 'Chrome, Edge, Safari 최신 버전에서 열어주세요.' };
+  }
+
+  // 2) 사이트 권한 상태
+  let permission = 'unknown';
+  try {
+    permission = (await navigator.permissions.query({ name: 'microphone' })).state;
+  } catch {
+    permission = 'unknown'; // 이 API 를 지원하지 않는 브라우저
+  }
+  const permText = { granted: '허용됨', denied: '차단됨', prompt: '아직 묻지 않음', unknown: '확인 불가' }[permission];
+  lines.push(mark(permission !== 'denied', `사이트 권한: ${permText}`));
+
+  // 3) 입력 장치
+  let inputs = [];
+  try {
+    inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+  } catch {
+    /* 무시 */
+  }
+  lines.push(
+    mark(inputs.length > 0, `입력 장치: ${inputs.length}개` + (inputs.length ? ` (${inputs.map((d) => d.label || '이름 없음').join(', ')})` : '')),
+  );
+
+  // 4) 실제로 열어본다
+  let openError = null;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    openError = e;
+  }
+  lines.push(mark(!openError, `마이크 열기: ${openError ? `실패 (${openError.name})` : '성공'}`));
+
+  // 5) 결론
+  let verdict;
+  if (!openError) {
+    verdict = '마이크는 정상입니다. 바로 녹음하시면 됩니다.';
+  } else if (!secure) {
+    verdict = 'http://localhost:4321 로 접속해야 녹음이 됩니다. 다른 주소로 열려 있습니다.';
+  } else if (inputs.length === 0) {
+    verdict = '마이크 장치 자체가 잡히지 않습니다. 연결 상태와 윈도우 소리 설정을 확인해주세요.';
+  } else if (permission === 'denied') {
+    verdict =
+      '이 사이트의 마이크 권한이 차단돼 있습니다.\n' +
+      '주소창 왼쪽 아이콘 → 마이크 → 허용으로 바꾸고 페이지를 새로고침해주세요.';
+  } else if (openError.name === 'NotAllowedError') {
+    // 사이트 권한은 있는데 막혔다면 그 위 단계(운영체제 또는 회사 정책)다
+    verdict =
+      '사이트 권한은 허용돼 있는데도 브라우저가 마이크를 열지 못했습니다.\n' +
+      '브라우저보다 위 단계에서 막힌 경우입니다. 아래를 순서대로 확인해주세요.\n\n' +
+      '1. 윈도우 설정 → 개인 정보 및 보안 → 마이크\n' +
+      '   · "마이크 액세스" 켜기\n' +
+      '   · "앱이 마이크에 액세스하도록 허용" 켜기\n' +
+      '   · 목록에서 사용 중인 브라우저(Chrome/Edge)도 켜기\n' +
+      '2. 설정을 바꿨다면 브라우저를 완전히 종료했다가 다시 켜기\n' +
+      '3. 회사 PC라면 보안 정책으로 마이크가 막혀 있을 수 있습니다\n' +
+      '   (chrome://policy 에서 AudioCaptureAllowed 항목 확인)\n\n' +
+      '그래도 안 되면, 휴대폰 녹음기로 녹음한 파일을 public/audio 에 넣고\n' +
+      'script.json 에 narrationAudio 로 지정하는 방법이 있습니다.';
+  } else if (openError.name === 'NotReadableError' || openError.name === 'TrackStartError') {
+    verdict =
+      '장치는 있는데 열리지 않습니다. 다른 프로그램이 마이크를 쓰고 있을 가능성이 큽니다.\n' +
+      '줌·팀즈·녹음기·디스코드 등을 모두 종료한 뒤 다시 시도해주세요.';
+  } else {
+    verdict = `예상치 못한 오류입니다: ${openError.name} — ${openError.message}`;
+  }
+
+  return { html: lines.join('\n'), verdict };
+}
+
+$('#btnMicCheck').addEventListener('click', async () => {
+  const btn = $('#btnMicCheck');
+  const box = $('#micReport');
+  btn.disabled = true;
+  btn.textContent = '점검 중…';
+  box.classList.remove('hidden');
+  box.textContent = '마이크를 확인하는 중입니다…';
+  try {
+    const { html, verdict } = await diagnoseMic();
+    box.innerHTML = `${html}<span class="verdict">${escapeHtml(verdict)}</span>`;
+  } catch (e) {
+    box.textContent = `점검에 실패했습니다: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '마이크 점검';
   }
 });
