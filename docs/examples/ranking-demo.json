@@ -1,0 +1,121 @@
+{
+  "topic": "공기업연봉",
+  "accent": "ice",
+  "source": {
+    "title": "공기업 평균연봉 순위 (알리오 분류, 2025년 결산 기준)",
+    "publisher": "예시용 데모",
+    "url": "https://example.com/ranking-demo",
+    "checkedOn": "2026-09-20"
+  },
+  "cards": [
+    {
+      "type": "hook",
+      "origin": "creator",
+      "kicker": "연봉 순위",
+      "title": "공기업 평균연봉\n1위는 얼마일까",
+      "narration": "공기업 평균연봉 상위 열여섯 곳을 순서대로 보여드릴게요. 1위는 1억을 넘습니다.",
+      "durationSec": 4.8,
+      "visual": {
+        "kind": "stat",
+        "value": "1억 847",
+        "unit": "만 원",
+        "caption": "1위 기관의 평균연봉"
+      }
+    },
+    {
+      "type": "fact",
+      "origin": "source",
+      "kicker": "1위~8위",
+      "title": "1억 넘는 곳이\n다섯 군데입니다",
+      "narration": "1위부터 8위까지입니다. 발전 계열이 상위권을 거의 다 가져갔습니다.",
+      "durationSec": 7.5,
+      "visual": {
+        "kind": "ranklist",
+        "totalRanks": 16,
+        "items": [
+          { "rank": 1, "label": "한국수력원자력", "value": "1억 847만 원", "barValue": 10847, "highlight": true },
+          { "rank": 2, "label": "한국가스공사", "value": "1억 609만 원", "barValue": 10609 },
+          { "rank": 3, "label": "한국중부발전", "value": "1억 233만 원", "barValue": 10233 },
+          { "rank": 4, "label": "한국남부발전", "value": "1억 127만 원", "barValue": 10127 },
+          { "rank": 5, "label": "한국전력기술", "value": "1억 97만 원", "barValue": 10097 },
+          { "rank": 6, "label": "한국남동발전", "value": "9,964만 원", "barValue": 9964 },
+          { "rank": 7, "label": "한국동서발전", "value": "9,899만 원", "barValue": 9899 },
+          { "rank": 8, "label": "한국서부발전", "value": "9,795만 원", "barValue": 9795 }
+        ]
+      }
+    },
+    {
+      "type": "fact",
+      "origin": "source",
+      "kicker": "9위~16위",
+      "title": "9위부터는\n9천만 원대입니다",
+      "narration": "9위부터 16위까지입니다. 이름이 익숙한 곳들이 여기 몰려 있습니다.",
+      "durationSec": 7.2,
+      "visual": {
+        "kind": "ranklist",
+        "totalRanks": 16,
+        "items": [
+          { "rank": 9, "label": "한국마사회", "value": "9,727만 원", "barValue": 9727 },
+          { "rank": 10, "label": "인천국제공항공사", "value": "9,719만 원", "barValue": 9719 },
+          { "rank": 11, "label": "한국석유공사", "value": "9,660만 원", "barValue": 9660 },
+          { "rank": 12, "label": "한국전력공사", "value": "9,638만 원", "barValue": 9638, "highlight": true },
+          { "rank": 13, "label": "한국조폐공사", "value": "9,390만 원", "barValue": 9390 },
+          { "rank": 14, "label": "한국부동산원", "value": "9,360만 원", "barValue": 9360 },
+          { "rank": 15, "label": "한국도로공사", "value": "9,069만 원", "barValue": 9069 },
+          { "rank": 16, "label": "한전KPS", "value": "8,803만 원", "barValue": 8803 }
+        ]
+      }
+    },
+    {
+      "type": "example",
+      "origin": "creator",
+      "kicker": "직접 계산",
+      "title": "1위를 12로 나눠봤습니다",
+      "narration": "1위 금액을 열두 달로 나누면 월 900만 원이 넘습니다. 다만 이건 세금 떼기 전 금액입니다.",
+      "durationSec": 6.4,
+      "visual": {
+        "kind": "calc",
+        "lines": [
+          { "label": "1위 평균연봉", "value": "10,847만 원" },
+          { "label": "÷ 12개월", "value": "12" },
+          { "label": "16위와의 차이", "value": "2,044만 원" }
+        ],
+        "result": { "label": "월 환산 (세전)", "value": "903만 원" }
+      }
+    },
+    {
+      "type": "caveat",
+      "origin": "creator",
+      "kicker": "주의할 점",
+      "title": "이 순위를 그대로\n믿으면 안 되는 이유",
+      "narration": "평균연봉은 신입 초봉이 아닙니다. 근속연수가 길고 고직급 비중이 높으면 평균이 올라갑니다.",
+      "durationSec": 7.1,
+      "visual": {
+        "kind": "checklist",
+        "items": [
+          { "text": "신입 초봉이 아니라 전 직원 평균이다", "ok": false },
+          { "text": "근속연수가 길수록 평균이 올라간다", "ok": false },
+          { "text": "기관마다 수당·교대근무 구성이 다르다", "ok": false },
+          { "text": "같은 기관도 직군에 따라 크게 갈린다", "ok": false }
+        ]
+      }
+    },
+    {
+      "type": "conclusion",
+      "origin": "creator",
+      "kicker": "결론",
+      "title": "숫자보다 기준을\n먼저 보세요",
+      "narration": "순위만 보지 말고 평균이 어떻게 계산된 숫자인지부터 확인하는 게 낫습니다.",
+      "durationSec": 5.6,
+      "cta": "기관별 상세는 알리오에서 직접 확인",
+      "visual": {
+        "kind": "timeline",
+        "items": [
+          { "when": "먼저", "label": "평균의 기준 확인" },
+          { "when": "그다음", "label": "직군별 실수령 비교", "highlight": true },
+          { "when": "마지막", "label": "근속·수당 구조 확인" }
+        ]
+      }
+    }
+  ]
+}

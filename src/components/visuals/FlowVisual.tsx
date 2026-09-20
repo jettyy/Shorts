@@ -1,6 +1,7 @@
 import React from 'react';
 import { BASE, type Accent } from '../../theme';
 import { CONTEXT_SOLID, GRID } from '../chartTheme';
+import { fitDensity, type Density } from '../../lib/density';
 import { useDraw, useReveal } from './useReveal';
 import type { FlowVisual as Data } from '../../types';
 
@@ -11,9 +12,18 @@ type NodeProps = {
   delay: number;
   accent: Accent;
   horizontal: boolean;
+  d: Density;
 };
 
-const FlowNode: React.FC<NodeProps> = ({ label, note, highlight, delay, accent, horizontal }) => {
+const FlowNode: React.FC<NodeProps> = ({
+  label,
+  note,
+  highlight,
+  delay,
+  accent,
+  horizontal,
+  d,
+}) => {
   const enter = useReveal(delay);
   return (
     <div
@@ -21,8 +31,8 @@ const FlowNode: React.FC<NodeProps> = ({ label, note, highlight, delay, accent, 
         flex: horizontal ? 1 : undefined,
         opacity: enter,
         transform: `translateY(${(1 - enter) * 18}px) scale(${0.96 + enter * 0.04})`,
-        padding: horizontal ? '28px 22px' : '30px 34px',
-        borderRadius: 24,
+        padding: horizontal ? `${d.sp(28)}px ${d.sp(22)}px` : `${d.sp(30)}px ${d.sp(34)}px`,
+        borderRadius: d.sp(24),
         border: `3px solid ${highlight ? accent.primary : GRID}`,
         background: highlight ? `${accent.soft}` : 'rgba(255,255,255,0.04)',
         textAlign: horizontal ? 'center' : 'left',
@@ -30,7 +40,7 @@ const FlowNode: React.FC<NodeProps> = ({ label, note, highlight, delay, accent, 
     >
       <div
         style={{
-          fontSize: horizontal ? 38 : 46,
+          fontSize: d.fs(horizontal ? 38 : 46),
           fontWeight: 800,
           color: highlight ? accent.bright : BASE.white,
           letterSpacing: '-0.03em',
@@ -43,8 +53,8 @@ const FlowNode: React.FC<NodeProps> = ({ label, note, highlight, delay, accent, 
       {note ? (
         <div
           style={{
-            marginTop: 10,
-            fontSize: horizontal ? 26 : 30,
+            marginTop: d.sp(10),
+            fontSize: d.fs(horizontal ? 26 : 30),
             fontWeight: 600,
             color: BASE.textMuted,
             wordBreak: 'keep-all',
@@ -57,16 +67,19 @@ const FlowNode: React.FC<NodeProps> = ({ label, note, highlight, delay, accent, 
   );
 };
 
-const Arrow: React.FC<{ delay: number; accent: Accent; horizontal: boolean }> = ({
+const Arrow: React.FC<{ delay: number; accent: Accent; horizontal: boolean; d: Density }> = ({
   delay,
   accent,
   horizontal,
+  d,
 }) => {
   const draw = useDraw(delay, 12);
   if (horizontal) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', opacity: draw }}>
-        <div style={{ width: 22 * draw, height: 4, background: CONTEXT_SOLID, borderRadius: 2 }} />
+        <div
+          style={{ width: d.sp(22) * draw, height: 4, background: CONTEXT_SOLID, borderRadius: 2 }}
+        />
         <div
           style={{
             width: 0,
@@ -89,7 +102,9 @@ const Arrow: React.FC<{ delay: number; accent: Accent; horizontal: boolean }> = 
         margin: '4px 0',
       }}
     >
-      <div style={{ width: 4, height: 34 * draw, background: CONTEXT_SOLID, borderRadius: 2 }} />
+      <div
+        style={{ width: 4, height: d.sp(34) * draw, background: CONTEXT_SOLID, borderRadius: 2 }}
+      />
       <div
         style={{
           width: 0,
@@ -111,18 +126,25 @@ const Arrow: React.FC<{ delay: number; accent: Accent; horizontal: boolean }> = 
 export const FlowVisual: React.FC<{ data: Data; accent: Accent }> = ({ data, accent }) => {
   const horizontal = data.direction === 'right';
 
+  // 세로로 쌓을 때만 높이가 늘어난다. 가로는 폭을 나눠 쓰므로 줄일 필요가 없다.
+  const hasNote = data.nodes.some((n) => n.note);
+  const nodeH = 30 * 2 + 58 + (hasNote ? 40 : 0);
+  const d = fitDensity(horizontal ? 0 : data.nodes.length * (nodeH + 53) - 53, 46);
+
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: horizontal ? 'row' : 'column',
         alignItems: horizontal ? 'stretch' : 'stretch',
-        gap: horizontal ? 14 : 0,
+        gap: horizontal ? d.sp(14) : 0,
       }}
     >
       {data.nodes.map((node, i) => (
         <React.Fragment key={i}>
-          {i > 0 ? <Arrow delay={8 + i * 9 - 4} accent={accent} horizontal={horizontal} /> : null}
+          {i > 0 ? (
+            <Arrow delay={8 + i * 9 - 4} accent={accent} horizontal={horizontal} d={d} />
+          ) : null}
           <FlowNode
             label={node.label}
             note={node.note}
@@ -130,6 +152,7 @@ export const FlowVisual: React.FC<{ data: Data; accent: Accent }> = ({ data, acc
             delay={8 + i * 9}
             accent={accent}
             horizontal={horizontal}
+            d={d}
           />
         </React.Fragment>
       ))}

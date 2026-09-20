@@ -1,6 +1,7 @@
 import React from 'react';
 import { BASE, type Accent } from '../../theme';
 import { CONTEXT_SOLID } from '../chartTheme';
+import { fitDensity, type Density } from '../../lib/density';
 import { useDraw, useReveal } from './useReveal';
 import type { TimelineVisual as Data } from '../../types';
 
@@ -11,22 +12,23 @@ const Item: React.FC<{
   delay: number;
   accent: Accent;
   last: boolean;
-}> = ({ when, label, highlight, delay, accent, last }) => {
+  d: Density;
+}> = ({ when, label, highlight, delay, accent, last, d }) => {
   const enter = useReveal(delay);
   const lineDraw = useDraw(delay + 4, 12);
 
   return (
-    <div style={{ display: 'flex', gap: 26, opacity: enter }}>
+    <div style={{ display: 'flex', gap: d.sp(26), opacity: enter }}>
       {/* 시간 축 */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 34 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: d.sp(34) }}>
         <span
           style={{
-            width: highlight ? 30 : 22,
-            height: highlight ? 30 : 22,
+            width: d.sp(highlight ? 30 : 22),
+            height: d.sp(highlight ? 30 : 22),
             borderRadius: 999,
             background: highlight ? accent.primary : CONTEXT_SOLID,
             flexShrink: 0,
-            marginTop: 12,
+            marginTop: d.sp(12),
           }}
         />
         {!last ? (
@@ -34,7 +36,7 @@ const Item: React.FC<{
             style={{
               width: 4,
               flex: 1,
-              minHeight: 52,
+              minHeight: d.sp(52),
               background: CONTEXT_SOLID,
               opacity: 0.45,
               transform: `scaleY(${lineDraw})`,
@@ -44,10 +46,10 @@ const Item: React.FC<{
         ) : null}
       </div>
 
-      <div style={{ paddingBottom: last ? 0 : 34 }}>
+      <div style={{ paddingBottom: last ? 0 : d.sp(34) }}>
         <div
           style={{
-            fontSize: 30,
+            fontSize: d.fs(30),
             fontWeight: 800,
             color: highlight ? accent.primary : BASE.textDim,
             letterSpacing: '0.02em',
@@ -57,8 +59,8 @@ const Item: React.FC<{
         </div>
         <div
           style={{
-            marginTop: 6,
-            fontSize: 42,
+            marginTop: d.sp(6),
+            fontSize: d.fs(42),
             fontWeight: 800,
             color: highlight ? BASE.white : BASE.textMuted,
             letterSpacing: '-0.025em',
@@ -76,19 +78,26 @@ const Item: React.FC<{
 /**
  * 타임라인 — 시점별로 무엇이 달라지는지.
  * 신청 마감, 제도 변경일처럼 "언제"가 핵심인 정보에 쓴다.
+ * 항목 수에 맞춰 크기가 자동으로 줄어든다.
  */
-export const TimelineVisual: React.FC<{ data: Data; accent: Accent }> = ({ data, accent }) => (
-  <div style={{ display: 'flex', flexDirection: 'column' }}>
-    {data.items.map((item, i) => (
-      <Item
-        key={i}
-        when={item.when}
-        label={item.label}
-        highlight={item.highlight}
-        delay={8 + i * 7}
-        accent={accent}
-        last={i === data.items.length - 1}
-      />
-    ))}
-  </div>
-);
+const ITEM_H = 40 + 6 + 55 + 34; // when + 여백 + label + 아래 여백
+
+export const TimelineVisual: React.FC<{ data: Data; accent: Accent }> = ({ data, accent }) => {
+  const d = fitDensity(data.items.length * ITEM_H, 42);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {data.items.map((item, i) => (
+        <Item
+          key={i}
+          when={item.when}
+          label={item.label}
+          highlight={item.highlight}
+          delay={8 + i * 7}
+          accent={accent}
+          last={i === data.items.length - 1}
+          d={d}
+        />
+      ))}
+    </div>
+  );
+};

@@ -1,6 +1,8 @@
 /**
  * npm run check
  *  → src/script.json 을 점검한다.
+ * npm run check -- docs/examples/ranking-demo.json
+ *  → 다른 대본 파일을 점검한다.
  *
  * 두 가지를 본다.
  *  1) 렌더링이 깨지는 구조적 문제 (ERROR — 이건 고쳐야 영상이 나온다)
@@ -15,7 +17,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const data = JSON.parse(readFileSync(join(root, 'src', 'script.json'), 'utf8'));
+const target = process.argv[2] ? join(root, process.argv[2]) : join(root, 'src', 'script.json');
+const data = JSON.parse(readFileSync(target, 'utf8'));
 const cards = data.cards ?? [];
 
 const MAX_LINES = 3;
@@ -77,6 +80,48 @@ cards.forEach((card, i) => {
   const lines = wrap(card.title ?? '');
   if (lines.length > MAX_LINES) {
     errors.push(`${no}번 카드: 제목이 ${lines.length}줄입니다(최대 ${MAX_LINES}줄).`);
+  }
+});
+
+/* ── 도표가 카드 밖으로 넘치는지 ──────────────────────────
+ *
+ * 도표는 항목 수에 맞춰 스스로 작아지지만(`src/lib/density.ts`),
+ * 글자가 읽을 수 있는 하한(26px)에 닿으면 더 못 줄인다. 그때부터는 잘린다.
+ * 항목을 줄이는 게 아니라 **카드를 나누는 것**이 답이라서, 몇 장으로 나눌지까지 알려준다.
+ *
+ * 아래 수치는 각 도표 컴포넌트의 설계 원본 크기와 같아야 한다.
+ * (행 높이·여백·"반드시 읽혀야 하는 글자" 크기)
+ */
+const VISUAL_BUDGET = 980; // src/lib/density.ts 와 같아야 한다
+const MIN_FONT = 26;
+const VISUAL_SHAPE = {
+  ranklist: { key: 'items', per: 84, gap: 12, font: 36, head: 0 },
+  bar: { key: 'items', per: 124, gap: 22, font: 34, head: 0 },
+  checklist: { key: 'items', per: 96, gap: 16, font: 40, head: 0 },
+  table: { key: 'rows', per: 82, gap: 0, font: 34, head: 48 },
+  calc: { key: 'lines', per: 68, gap: 0, font: 36, head: 94 },
+  timeline: { key: 'items', per: 135, gap: 0, font: 42, head: 0 },
+  flow: { key: 'nodes', per: 118, gap: 53, font: 46, head: 0 },
+};
+
+const maxItemsFor = ({ per, gap, font, head }) => {
+  const minScale = Math.min(1, MIN_FONT / font);
+  const room = VISUAL_BUDGET / minScale - head;
+  return Math.max(1, Math.floor((room + gap) / (per + gap)));
+};
+
+cards.forEach((card, i) => {
+  const shape = VISUAL_SHAPE[card.visual?.kind];
+  if (!shape) return;
+  const count = (card.visual[shape.key] ?? []).length;
+  const max = maxItemsFor(shape);
+  if (count > max) {
+    const parts = Math.ceil(count / max);
+    notes.push(
+      `${i + 1}번 카드: ${card.visual.kind} 항목이 ${count}개라 카드 밖으로 넘칩니다(한 장 최대 ${max}개). ` +
+        `항목을 지우지 말고 카드 ${parts}장으로 나눠 이어서 보여주세요` +
+        (card.visual.kind === 'ranklist' ? ' (rank 를 직접 지정하면 번호가 이어집니다).' : '.'),
+    );
   }
 });
 

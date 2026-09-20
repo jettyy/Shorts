@@ -102,6 +102,33 @@ export type TimelineVisual = {
   items: { when: string; label: string; highlight?: boolean }[];
 };
 
+/**
+ * 순위 목록 — TOP N, 랭킹, 순위표.
+ *
+ * 원문이 "1위부터 20위까지"인데 상위 몇 개만 보여주면 핵심이 빠진다.
+ * 순위는 **끝까지 보여주는 것 자체가 콘텐츠**라서, 항목 수 제한을 두지 않는다.
+ * 대신 항목이 많으면 글자·행 높이가 자동으로 줄고(`lib/density.ts`),
+ * 한 카드에 다 못 넣을 만큼 많으면 여러 카드로 나눠 이어 보여준다.
+ */
+export type RankListVisual = {
+  kind: 'ranklist';
+  /** 값 뒤에 붙는 단위 (예: "만 원"). value 에 이미 단위가 있으면 생략 */
+  unit?: string;
+  items: {
+    /** 순위. 생략하면 배열 순서대로 1,2,3… (나눠 실을 땐 직접 지정) */
+    rank?: number;
+    label: string;
+    /** 화면에 그대로 찍히는 값 (예: "1억 847만 원") */
+    value: string;
+    /** 막대 길이용 숫자값 (선택). 있으면 값 뒤에 크기 막대가 깔린다 */
+    barValue?: number;
+    /** accent 색으로 강조할 행 (한 장에 하나만) */
+    highlight?: boolean;
+  }[];
+  /** 전체 순위 개수 (예: 20). 주면 "20위 중" 같은 안내가 붙는다 */
+  totalRanks?: number;
+};
+
 export type Visual =
   | StatVisual
   | BarVisual
@@ -111,7 +138,8 @@ export type Visual =
   | CalcVisual
   | ChecklistVisual
   | TableVisual
-  | TimelineVisual;
+  | TimelineVisual
+  | RankListVisual;
 
 export type Card = {
   /** 카드 번호(1부터). 생략하면 배열 순서로 자동 부여 */

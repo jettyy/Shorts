@@ -10,6 +10,7 @@ import { CalcVisual } from './CalcVisual';
 import { ChecklistVisual } from './ChecklistVisual';
 import { TableVisual } from './TableVisual';
 import { TimelineVisual } from './TimelineVisual';
+import { RankListVisual } from './RankListVisual';
 
 /**
  * visual.kind 에 맞는 시각 자료를 그려준다.
@@ -35,6 +36,8 @@ export const VisualBlock: React.FC<{ visual: Visual; accent: Accent }> = ({ visu
       return <TableVisual data={visual} accent={accent} />;
     case 'timeline':
       return <TimelineVisual data={visual} accent={accent} />;
+    case 'ranklist':
+      return <RankListVisual data={visual} accent={accent} />;
     default:
       return null;
   }
