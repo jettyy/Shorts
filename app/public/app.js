@@ -600,6 +600,10 @@ function clearOutputUI() {
   $('#ytTags').value = '';
   $('#ytResult').classList.add('hidden');
   $('#ytProgressBox').classList.add('hidden');
+  // 예약 시각은 영상마다 새로 계산한다 (지난 영상 기준이 남으면 안 된다)
+  $('#ytWhen').value = '';
+  $('#ytSlotNote').className = 'slot-note';
+  $('#ytSlotNote').textContent = '';
 
   $('#audioPreview').classList.add('hidden');
   $('#fullAudio').removeAttribute('src');
@@ -864,6 +868,11 @@ function renderYtState(st) {
     : connect
       ? '계정 연결이 필요합니다'
       : 'OAuth 클라이언트 등록이 필요합니다';
+
+  // 업로드 영역이 열리고 기본값(예약 발행)이 선택돼 있으면 추천 시각을 채워둔다
+  if (ready && document.querySelector('input[name="ytMode"]:checked')?.value === 'schedule') {
+    fillNextSlot();
+  }
 }
 
 const refreshYt = async () => renderYtState(await api('/api/youtube/status'));
@@ -912,27 +921,85 @@ $('#btnYtDisconnect').addEventListener('click', async () => {
   toast('연결을 해제했습니다.');
 });
 
+/* ── 예약 발행 시각 ──────────────────────────────────── */
+
+/** Date → datetime-local 입력값 (그 자리 시간대 기준 "YYYY-MM-DDTHH:mm") */
+const toLocalInput = (date) =>
+  new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+const fmtWhen = (iso) =>
+  new Date(iso).toLocaleString('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+/**
+ * 다음 예약 시각을 서버에서 받아 채운다.
+ *
+ * 채널에 이미 예약된 것 중 **가장 늦은 시각 뒤 3~5시간 사이**를 랜덤으로 고른다.
+ * 예약된 게 없으면 지금을 기준으로 잡는다.
+ * @param force true 면 이미 값이 있어도 새로 계산한다
+ */
+async function fillNextSlot(force = false) {
+  const input = $('#ytWhen');
+  const note = $('#ytSlotNote');
+  if (!force && input.value) return;
+
+  note.className = 'slot-note';
+  note.textContent = '추천 시각을 계산하는 중…';
+  try {
+    const s = await api('/api/youtube/next-slot');
+    input.value = toLocalInput(new Date(s.suggested));
+
+    const [lo, hi] = s.gapHours;
+    if (s.basedOn) {
+      note.innerHTML =
+        `마지막 예약(<b>${escapeHtml(fmtWhen(s.basedOn))}</b>` +
+        `${s.basedOnTitle ? ` · ${escapeHtml(s.basedOnTitle.slice(0, 24))}` : ''})` +
+        ` 뒤 ${lo}~${hi}시간 사이로 잡았습니다. 예약된 영상 ${s.scheduledCount}개.`;
+    } else {
+      note.textContent = `예약된 영상이 없어서 지금부터 ${lo}~${hi}시간 뒤로 잡았습니다.`;
+    }
+    if (s.note) {
+      note.className = 'slot-note warn';
+      note.textContent = `${note.textContent} — ${s.note}`;
+    }
+  } catch (e) {
+    // 추천에 실패해도 예약은 할 수 있어야 한다
+    note.className = 'slot-note warn';
+    note.textContent = `추천 시각을 못 가져왔습니다 (${e.message}). 직접 골라주세요.`;
+    if (!input.value) {
+      const d = new Date(Date.now() + 4 * 3600_000);
+      d.setSeconds(0, 0);
+      input.value = toLocalInput(d);
+    }
+  }
+}
+
+$('#btnYtSlot').addEventListener('click', () => fillNextSlot(true));
+
 // 예약 발행을 고르면 시각 입력을 보여준다
 document.querySelectorAll('input[name="ytMode"]').forEach((r) =>
   r.addEventListener('change', () => {
     const schedule = document.querySelector('input[name="ytMode"]:checked').value === 'schedule';
     $('#ytWhenRow').classList.toggle('hidden', !schedule);
-    if (schedule && !$('#ytWhen').value) {
-      // 기본값: 내일 오후 7시
-      const d = new Date();
-      d.setDate(d.getDate() + 1);
-      d.setHours(19, 0, 0, 0);
-      $('#ytWhen').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16);
-    }
+    if (schedule) fillNextSlot();
   }),
 );
 
 $('#btnYtUpload').addEventListener('click', async () => {
   const mode = document.querySelector('input[name="ytMode"]:checked').value;
   const when = $('#ytWhen').value;
-  if (mode === 'schedule' && !when) return toast('예약 시각을 입력해주세요.', true);
+  if (mode === 'schedule') {
+    if (!when) return toast('예약 시각을 입력해주세요.', true);
+    // 유튜브는 과거 시각으로 예약할 수 없다. 여기서 먼저 막아준다.
+    if (new Date(when).getTime() <= Date.now()) {
+      return toast('예약 시각이 이미 지났습니다. 앞으로의 시각을 골라주세요.', true);
+    }
+  }
 
   const btn = $('#btnYtUpload');
   btn.disabled = true;

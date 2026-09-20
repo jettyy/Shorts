@@ -220,9 +220,11 @@
         <div class="yt-upload hidden" id="ytUpload">
           <div class="warn-inline">
             ⚠️ 구글 API 심사를 받지 않은 프로젝트로 올린 영상은 <b>강제로 비공개</b>가 되고,
-            나중에 수동으로도 공개로 바꿀 수 없습니다. 공개로 올리려면 먼저
+            나중에 수동으로도 공개로 바꿀 수 없습니다. <b>예약 발행도 마찬가지라, 심사 전에는
+            예약 시각이 와도 공개되지 않을 수 있습니다.</b> 공개로 올리려면 먼저
             <a href="https://support.google.com/youtube/contact/yt_api_form" target="_blank" rel="noopener">API 감사</a>를
-            통과해야 합니다. 심사 전이라면 <b>비공개</b>로 올린 뒤 유튜브 스튜디오에서 다시 올리는 게 안전합니다.
+            통과해야 합니다. 심사 전이라면 <b>비공개로만 올리기</b>로 백업해두고
+            유튜브 스튜디오에서 직접 예약하는 게 확실합니다.
           </div>
 
           <label>제목 <input id="ytTitle" maxlength="100" /></label>
@@ -230,11 +232,20 @@
           <label>태그 (쉼표로 구분) <input id="ytTags" /></label>
 
           <div class="mode-row">
-            <label class="radio"><input type="radio" name="ytMode" value="private" checked /> 비공개로 올리기</label>
-            <label class="radio"><input type="radio" name="ytMode" value="schedule" /> 예약 발행</label>
-            <label class="radio"><input type="radio" name="ytMode" value="public" /> 바로 공개</label>
+            <label class="radio"><input type="radio" name="ytMode" value="schedule" checked /> 예약 발행</label>
+            <label class="radio"><input type="radio" name="ytMode" value="public" /> 바로 발행</label>
+            <label class="radio"><input type="radio" name="ytMode" value="private" /> 비공개로만 올리기</label>
           </div>
-          <label class="hidden" id="ytWhenRow">공개 시각 <input id="ytWhen" type="datetime-local" /></label>
+
+          <div id="ytWhenRow">
+            <label>공개 시각 (년-월-일 시:분)
+              <input id="ytWhen" type="datetime-local" step="300" />
+            </label>
+            <div class="slot-row">
+              <span class="slot-note" id="ytSlotNote">추천 시각을 계산하는 중…</span>
+              <button class="ghost small" id="btnYtSlot">다시 추천</button>
+            </div>
+          </div>
 
           <div class="actions">
             <button class="primary big" id="btnYtUpload">유튜브에 올리기</button>

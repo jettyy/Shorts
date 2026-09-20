@@ -1108,6 +1108,19 @@ const routes = {
     json(res, 200, youtube.status());
   },
 
+  /**
+   * 다음 예약 시각 추천.
+   * 채널에 이미 예약된 것 중 가장 늦은 시각을 찾아 그 뒤 3~5시간 사이를 고른다.
+   * (목록을 못 읽어도 추천은 항상 돌려준다 — note 에 이유가 담긴다)
+   */
+  'GET /api/youtube/next-slot': async (req, res) => {
+    try {
+      json(res, 200, await youtube.nextSlot());
+    } catch (e) {
+      json(res, 400, { error: e.message });
+    }
+  },
+
   /** 구글 로그인 화면으로 보낼 주소 */
   'GET /api/youtube/auth-url': async (req, res, url) => {
     try {

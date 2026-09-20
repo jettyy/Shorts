@@ -12,7 +12,8 @@
     "narration": "node scripts/narration.mjs",
     "studio": "remotion studio",
     "still": "node scripts/still.mjs",
-    "upgrade": "remotion upgrade"
+    "upgrade": "remotion upgrade",
+    "test:slot": "node scripts/test-next-slot.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.526",

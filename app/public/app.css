@@ -400,3 +400,11 @@ button, .primary {
 .reset-box h3 { font-size: 17px; margin: 0 0 8px; color: var(--text-2); }
 .reset-box .hint { max-width: 620px; }
 .reset-box .actions { margin-top: 14px; }
+
+/* ── 예약 시각 추천 ─────────────────────── */
+.slot-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;
+}
+.slot-note { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+.slot-note b { color: var(--gold-bright); font-weight: 700; }
+.slot-note.warn { color: #ffe6b0; }

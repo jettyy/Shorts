@@ -20,7 +20,19 @@ const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const UPLOAD_URL =
   'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
-const SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
+/**
+ * 요청하는 권한.
+ *  - youtube.upload   : 영상 업로드
+ *  - youtube.readonly : **이미 예약해둔 영상들의 공개 예정 시각을 읽기 위해.**
+ *    마지막 예약 뒤로 다음 예약 시각을 자동으로 잡아주는 데 쓴다.
+ *
+ * ⚠️ 권한을 늘렸으므로, 예전에 연결한 계정은 한 번 다시 연결해야 목록을 읽을 수 있다.
+ *    못 읽어도 업로드는 그대로 되고, 추천 시각만 "지금 기준"으로 바뀐다.
+ */
+const SCOPE = [
+  'https://www.googleapis.com/auth/youtube.upload',
+  'https://www.googleapis.com/auth/youtube.readonly',
+].join(' ');
 
 /** 업로드 1건당 소모되는 할당량 (기본 일일 한도 10,000) */
 export const QUOTA_PER_UPLOAD = 1600;
@@ -147,6 +159,97 @@ export const createYouTube = (dataDir) => {
     return title ?? null;
   };
 
+  /* ── 다음 예약 시각 자동 추천 ──────────────────────────────
+   *
+   * 예약을 몰아서 같은 시간대에 올리면 채널이 한 번에 쏟아졌다가 조용해진다.
+   * 그래서 **이미 예약해둔 것 중 가장 늦은 시각을 찾아 그 뒤 3~5시간 사이**로 잡는다.
+   * 정각에 몰리지 않게 분 단위 랜덤을 주되, 5분 단위로 떨어뜨린다.
+   */
+
+  const GAP_MIN_H = 3;
+  const GAP_MAX_H = 5;
+
+  const api = async (token, path) => {
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error?.message ?? `유튜브 응답 오류 (${res.status})`);
+      err.status = res.status;
+      err.reason = data.error?.errors?.[0]?.reason ?? '';
+      throw err;
+    }
+    return data;
+  };
+
+  /** 기준 시각에서 3~5시간 뒤, 5분 단위로 */
+  const randomSlotAfter = (base) => {
+    const gap = (GAP_MIN_H + Math.random() * (GAP_MAX_H - GAP_MIN_H)) * 3600_000;
+    const t = new Date(base.getTime() + gap);
+    t.setSeconds(0, 0);
+    t.setMinutes(Math.round(t.getMinutes() / 5) * 5);
+    return t;
+  };
+
+  /**
+   * 채널에 예약(비공개 + publishAt)된 영상 중 가장 늦은 공개 예정 시각을 찾는다.
+   * 업로드 목록 최신 50개만 본다 — 예약은 보통 최근 업로드에 몰려 있다.
+   */
+  const latestScheduled = async (token) => {
+    const ch = await api(token, 'channels?part=contentDetails&mine=true');
+    const uploads = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploads) return null;
+
+    const list = await api(
+      token,
+      `playlistItems?part=contentDetails&maxResults=50&playlistId=${uploads}`,
+    );
+    const ids = (list.items ?? []).map((i) => i.contentDetails?.videoId).filter(Boolean);
+    if (!ids.length) return null;
+
+    const videos = await api(token, `videos?part=status,snippet&id=${ids.join(',')}`);
+    const scheduled = (videos.items ?? [])
+      .filter((v) => v.status?.publishAt)
+      .map((v) => ({ at: new Date(v.status.publishAt), title: v.snippet?.title ?? '' }))
+      .filter((v) => !Number.isNaN(v.at.getTime()))
+      .sort((a, b) => b.at - a.at);
+
+    return scheduled.length ? { ...scheduled[0], count: scheduled.length } : null;
+  };
+
+  /**
+   * 다음 예약 시각 추천.
+   * 예약된 게 있으면 그 뒤, 없으면 지금 뒤로 3~5시간 사이를 고른다.
+   * 목록을 못 읽어도(권한 부족 등) 추천 자체는 항상 돌려준다.
+   */
+  const nextSlot = async () => {
+    const now = new Date();
+    let last = null;
+    let note = null;
+
+    try {
+      const token = await accessToken();
+      last = await latestScheduled(token);
+    } catch (e) {
+      note =
+        e.status === 403
+          ? '예약 목록을 읽을 권한이 없습니다. [계정 다시 연결]을 누르면 마지막 예약 뒤로 자동 계산됩니다.'
+          : `예약 목록을 읽지 못했습니다 (${e.message})`;
+    }
+
+    // 이미 지난 예약을 기준으로 잡으면 과거 시각이 나온다 → 지금과 비교해 늦은 쪽
+    const base = last && last.at > now ? last.at : now;
+    return {
+      suggested: randomSlotAfter(base).toISOString(),
+      basedOn: last ? last.at.toISOString() : null,
+      basedOnTitle: last?.title ?? null,
+      scheduledCount: last?.count ?? 0,
+      gapHours: [GAP_MIN_H, GAP_MAX_H],
+      note,
+    };
+  };
+
   /**
    * 영상 업로드.
    * mode: 'public' | 'private' | 'schedule'
@@ -226,5 +329,5 @@ export const createYouTube = (dataDir) => {
     };
   };
 
-  return { status, setClient, disconnect, authUrl, exchangeCode, upload };
+  return { status, setClient, disconnect, authUrl, exchangeCode, upload, nextSlot };
 };
