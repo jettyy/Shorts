@@ -67,7 +67,9 @@ const collectInput = () => ({
     title: $('#srcTitle').value.trim() || '(제목 미입력)',
     publisher: $('#srcPublisher').value.trim(),
     url: $('#srcUrl').value.trim() || 'https://',
-    checkedOn: $('#srcChecked').value || new Date().toISOString().slice(0, 10),
+    // 확인 기준일은 입력받지 않는다. 대본을 만드는 날이 곧 확인한 날이다.
+    // (영상 마지막 카드의 출처 줄에만 쓰이고, 업로드 문구에는 넣지 않는다)
+    checkedOn: new Date().toISOString().slice(0, 10),
   },
 });
 
@@ -756,7 +758,6 @@ $('#steps').addEventListener('click', (e) => {
 /* ── 시작 ────────────────────────────────────────────── */
 
 (async () => {
-  $('#srcChecked').value = new Date().toISOString().slice(0, 10);
   try {
     state.settings = await api('/api/settings');
     markTempo(state.settings);

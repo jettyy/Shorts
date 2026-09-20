@@ -12,12 +12,15 @@ const clean = (s) => String(s ?? '').replace(/\n/g, ' ').replace(/\s+/g, ' ').tr
 /** 제목에 어울리게 카드 제목을 한 줄로 */
 const oneLine = (card) => clean(card?.title);
 
-/** 출처 한 줄 */
+/**
+ * 출처 한 줄.
+ * 확인 기준일은 넣지 않는다 — 영상 마지막 카드에 이미 나오고,
+ * 업로드 문구에 날짜가 박히면 나중에 다시 올릴 때 문구를 고쳐야 한다.
+ */
 const sourceLine = (script) => {
   const src = script.source ?? {};
   const who = [src.publisher, src.title].filter(Boolean).join(' · ');
-  const when = src.checkedOn ? ` (${src.checkedOn} 기준)` : '';
-  return `자료: ${who || '출처 미기재'}${when}`;
+  return `자료: ${who || '출처 미기재'}`;
 };
 
 /** 주제에서 해시태그 후보를 뽑는다 */
@@ -107,17 +110,42 @@ export const buildPublishCopy = (script) => {
   };
 };
 
+/** 2026-09-20 / 2026. 09. 20. / 2026년 9월 20일 */
+const DATE = '\\d{4}\\s*[-./년]\\s*\\d{1,2}\\s*[-./월]\\s*\\d{1,2}\\s*일?\\.?';
+
+/**
+ * 업로드 문구에서 확인 기준일을 걷어낸다.
+ *
+ * 문구는 대본의 `publish` 블록을 그대로 쓰는데, 예전에 만든 대본에는
+ * "확인 기준일 2026년 9월 20일" 같은 문장이 박혀 있다.
+ * 날짜는 영상 마지막 카드에만 두고 문구에는 남기지 않는다.
+ */
+const stripCheckedOn = (text) =>
+  String(text ?? '')
+    // "/ 2026-09-20 기준", "(2026-09-20 기준)"
+    .replace(new RegExp(`\\s*[(\\[]?\\s*[/·]?\\s*${DATE}\\s*기준\\s*[)\\]]?`, 'g'), '')
+    // "확인 기준일: 2026-09-20", "· 확인 기준일 2026년 9월 20일"
+    .replace(new RegExp(`\\s*[/·|,]?\\s*확인\\s*기준일\\s*[:：]?\\s*(${DATE})?`, 'g'), '')
+    // 날짜를 들어낸 자리에 남은 빈 괄호·구분자·빈 줄 정리
+    .replace(/\s*[([{][\s·/|,]*[)\]}]/g, '')
+    .split('\n')
+    .map((line) => line.replace(/\s*[/·|,]\s*$/, '').trimEnd())
+    .filter((line, i, arr) => !(line === '' && arr[i - 1] === ''))
+    .join('\n')
+    .trim();
+
 /** 대본에 publish 가 있으면 그걸 쓰고, 빠진 항목만 채워 넣는다 */
 export const withPublishCopy = (script) => {
   const generated = buildPublishCopy(script);
   const given = script.publish ?? {};
+  const pick = (a, b) => stripCheckedOn(String(a ?? '').trim() || b);
   return {
     youtube: {
-      title: given.youtube?.title?.trim() || generated.youtube.title,
-      description: given.youtube?.description?.trim() || generated.youtube.description,
+      title: pick(given.youtube?.title, generated.youtube.title),
+      description: pick(given.youtube?.description, generated.youtube.description),
       tags: given.youtube?.tags?.length ? given.youtube.tags : generated.youtube.tags,
     },
-    instagram: { caption: given.instagram?.caption?.trim() || generated.instagram.caption },
-    threads: { text: given.threads?.text?.trim() || generated.threads.text },
+    instagram: { caption: pick(given.instagram?.caption, generated.instagram.caption) },
+    threads: { text: pick(given.threads?.text, generated.threads.text) },
   };
 };

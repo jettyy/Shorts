@@ -1014,7 +1014,6 @@ const routes = {
           `제목: ${src.title ?? '-'}`,
           `매체: ${src.publisher || '-'}`,
           `주소: ${src.url ?? '-'}`,
-          `확인 기준일: ${src.checkedOn ?? '-'}`,
         ].join('\n'),
       ),
     ].join('\n');
