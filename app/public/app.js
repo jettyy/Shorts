@@ -679,7 +679,6 @@ const PLATFORMS = [
   { key: 'youtube', label: '유튜브', pick: (c) => `${c.youtube.title}\n\n${c.youtube.description}` },
   { key: 'instagram', label: '인스타그램', pick: (c) => c.instagram.caption },
   { key: 'threads', label: '쓰레드', pick: (c) => c.threads.text },
-  { key: 'facebook', label: '페이스북', pick: (c) => c.facebook.text },
 ];
 
 let publishCopy = null;

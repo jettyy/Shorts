@@ -45,7 +45,10 @@ export const buildPublishCopy = (script) => {
   const lead = clean(hook?.narration) || title;
 
   const tags = [...topicTags(script), '정보', '꿀팁', '쇼츠'];
-  const hashtags = [...new Set([...topicTags(script), '쇼츠', '정보', '꿀팁', '생활정보'])]
+
+  // 인스타 해시태그는 딱 5개. 주제에서 뽑은 걸 앞에 두고 모자라면 기본 태그로 채운다.
+  const hashtags = [...new Set([...topicTags(script), '생활정보', '꿀팁', '정보', '쇼츠'])]
+    .slice(0, 5)
     .map((t) => `#${t.replace(/\s/g, '')}`)
     .join(' ');
 
@@ -76,20 +79,24 @@ export const buildPublishCopy = (script) => {
     .join('\n')
     .trim();
 
-  const threads = [title, '', ...bodyLines(script).slice(0, 3), '', sourceLine(script)]
-    .join('\n')
-    .trim()
-    .slice(0, 480);
-
-  const facebook = [
-    title,
+  /**
+   * 쓰레드는 말투가 다르다.
+   * 정보를 또박또박 나열하는 것보다, 친구한테 알려주듯 반말로 던지는 글이 잘 읽힌다.
+   * 200자 안팎, 이모지 한두 개, 댓글 유도로 마무리한다.
+   * (쓰레드는 해시태그를 한 개만 지원해서 주제 태그 하나만 붙인다)
+   */
+  const threadTag = topicTags(script)[0];
+  const threads = [
+    `${title.replace(/[.!?]$/, '')} 👀`,
     '',
-    ...bodyLines(script).slice(0, 4),
+    '이거 모르는 사람 생각보다 많더라.',
+    '조건이랑 확인하는 방법까지 영상에 담아놨어.',
+    '나도 해보니까 몇 분 안 걸리더라고!',
     '',
-    conclusion ? clean(conclusion.narration) : '',
-    '',
-    sourceLine(script),
+    '궁금한 거 있으면 댓글 달아줘 🙌',
+    threadTag ? `#${threadTag.replace(/\s/g, '')}` : '',
   ]
+    .filter((l, i, arr) => !(l === '' && arr[i - 1] === ''))
     .join('\n')
     .trim();
 
@@ -97,7 +104,6 @@ export const buildPublishCopy = (script) => {
     youtube: { title, description, tags },
     instagram: { caption: instagram },
     threads: { text: threads },
-    facebook: { text: facebook },
   };
 };
 
@@ -113,6 +119,5 @@ export const withPublishCopy = (script) => {
     },
     instagram: { caption: given.instagram?.caption?.trim() || generated.instagram.caption },
     threads: { text: given.threads?.text?.trim() || generated.threads.text },
-    facebook: { text: given.facebook?.text?.trim() || generated.facebook.text },
   };
 };

@@ -153,7 +153,6 @@ export type PublishCopy = {
   youtube?: { title?: string; description?: string; tags?: string[] };
   instagram?: { caption?: string };
   threads?: { text?: string };
-  facebook?: { text?: string };
 };
 
 export type ScriptData = {
