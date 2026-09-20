@@ -15,7 +15,10 @@
     "upgrade": "remotion upgrade",
     "test:slot": "node scripts/test-next-slot.mjs",
     "test:yt": "node scripts/test-yt-errors.mjs",
-    "test:upload": "node scripts/test-yt-upload.mjs"
+    "test:upload": "node scripts/test-yt-upload.mjs",
+    "test:emphasis": "node --experimental-strip-types scripts/test-emphasis.mjs",
+    "test:style": "node --experimental-strip-types scripts/test-style-config.mjs",
+    "test": "npm run test:emphasis && npm run test:style && npm run test:slot && npm run test:yt && npm run test:upload"
   },
   "dependencies": {
     "@remotion/cli": "4.0.526",

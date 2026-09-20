@@ -3,6 +3,7 @@ import { BASE, type Accent } from '../../theme';
 import { CONTEXT, GRID, NEUTRAL_RAMP } from '../chartTheme';
 import { fitDensity } from '../../lib/density';
 import { useDraw, useReveal } from './useReveal';
+import { STYLE } from '../../lib/style';
 import type { RankListVisual as Data } from '../../types';
 
 /** 설계 원본 크기 (항목이 적을 때 쓰이는 최대 크기) */
@@ -157,6 +158,27 @@ export const RankListVisual: React.FC<{ data: Data; accent: Accent }> = ({ data,
   // 막대는 이 카드에 실린 값들 중 최댓값 기준으로 그린다
   const maxBar = Math.max(...items.map((i) => i.barValue ?? 0), 0);
 
+  /*
+   * 등장 순서. 목록이 위에서 아래로 그냥 깔리면 "다 봤다"는 느낌에 중간에 나간다.
+   * 무엇을 언제 보여주느냐가 시청 지속과 직결되므로 순서를 고를 수 있게 한다.
+   * **자리(위치)는 그대로 두고 등장 타이밍만 바꾼다** — 순위가 뒤섞이면 안 된다.
+   */
+  const order = data.reveal ?? STYLE.rank.reveal;
+  const delayOf = (i: number) => {
+    const last = items.length - 1;
+    if (order === 'countdown') return 6 + (last - i) * 4;
+    if (order === 'winner-first') {
+      // 1위(가장 높은 순위 = 배열 첫 항목)를 먼저 꽂고, 나머지를 이어 붙인다
+      const top = items.reduce(
+        (best, it, idx) => ((it.rank ?? idx + 1) < (items[best].rank ?? best + 1) ? idx : best),
+        0,
+      );
+      if (i === top) return 6;
+      return 18 + (i < top ? i : i - 1) * 4;
+    }
+    return 6 + i * 4;
+  };
+
   return (
     <div>
       {data.totalRanks ? (
@@ -183,7 +205,7 @@ export const RankListVisual: React.FC<{ data: Data; accent: Accent }> = ({ data,
             unit={data.unit}
             ratio={maxBar > 0 && item.barValue ? item.barValue / maxBar : null}
             highlight={Boolean(item.highlight)}
-            delay={6 + i * 4}
+            delay={delayOf(i)}
             accent={accent}
             h={h}
             fs={d.fs}

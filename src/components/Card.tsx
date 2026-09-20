@@ -2,6 +2,8 @@ import React from 'react';
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import { BASE, FONT_FAMILY, LAYOUT, TYPE, TYPE_LABEL, type Accent } from '../theme';
 import { fitBannerSize, fitFontSize, wrapTitle } from '../lib/text';
+import { emphasize } from '../lib/emphasis';
+import { STYLE } from '../lib/style';
 import { VisualBlock } from './visuals';
 import { InstantContext } from './visuals/useReveal';
 import type { Card as CardData, SourceInfo } from '../types';
@@ -38,6 +40,20 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
 
   const lines = wrapTitle(card.title, hasVisual ? 17 : 15);
   const fontSize = fitFontSize(lines, isHook, hasVisual);
+
+  /*
+   * 단어를 하나씩 띄우려면 **앞 줄들의 단어 수**를 알아야 한다.
+   * 그래야 2번째 줄 첫 단어가 1번째 줄이 다 뜬 뒤에 이어진다.
+   */
+  const wordsBefore = React.useMemo(() => {
+    const counts = lines.map((l) => emphasize(l).length);
+    let sum = 0;
+    return counts.map((n) => {
+      const before = sum;
+      sum += n;
+      return before;
+    });
+  }, [lines]);
 
   // ── 등장 ────────────────────────────────────────────────
   // 첫 카드는 등장 연출을 건너뛴다. 대신 아주 느린 확대로 정지 화면처럼 보이지 않게 한다.
@@ -212,34 +228,20 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
             ) : null}
 
             <div>
-              {lines.map((line, i) => {
-                const lineIn = isFirst
-                  ? 1
-                  : spring({
-                      frame: frame - i * 3,
-                      fps,
-                      config: { damping: 200, mass: 0.6, stiffness: 130 },
-                      durationInFrames: 20,
-                    });
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      fontSize,
-                      lineHeight: 1.26,
-                      fontWeight: isHook ? 900 : 800,
-                      color: BASE.white,
-                      letterSpacing: '-0.035em',
-                      wordBreak: 'keep-all',
-                      transform: `translateY(${interpolate(lineIn, [0, 1], [26, 0])}px)`,
-                      opacity: lineIn,
-                      textShadow: '0 8px 30px rgba(0,0,0,0.45)',
-                    }}
-                  >
-                    {line}
-                  </div>
-                );
-              })}
+              {lines.map((line, i) => (
+                <TitleLine
+                  key={i}
+                  line={line}
+                  lineIndex={i}
+                  before={wordsBefore[i]}
+                  frame={frame}
+                  fps={fps}
+                  fontSize={fontSize}
+                  weight={isHook ? 900 : 800}
+                  accent={accent}
+                  instant={Boolean(isFirst)}
+                />
+              ))}
             </div>
 
             {card.body ? (
@@ -324,5 +326,95 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
         ) : null}
       </AbsoluteFill>
     </InstantContext.Provider>
+  );
+};
+
+/**
+ * 제목 한 줄.
+ *
+ * 문장을 통째로 띄우지 않고 **단어 단위로 이어서** 띄운다.
+ * 쇼츠에서 한 카드에 주어지는 시간은 2~4초라, 정지된 문장은 읽히기 전에 넘어간다.
+ * 단어가 하나씩 들어오면 시선이 문장을 따라가면서 끝까지 읽게 된다.
+ *
+ * 숫자·순위·퍼센트 덩어리(`emphasis`)는 더 크게, 테마 색으로, 살짝 튕기며 들어온다.
+ * 그 카드에서 기억해야 할 건 결국 그 숫자 하나다.
+ *
+ * ⚠️ 1번 카드(`instant`)는 0프레임에 **완성된 화면**이어야 한다.
+ *    유튜브·인스타가 첫 프레임을 썸네일로 잡아가기 때문이다.
+ *    그래서 등장 연출을 건너뛰되, 강조(크기·색)는 그대로 살린다 —
+ *    썸네일에서도 숫자가 커 보여야 눌린다.
+ */
+const TitleLine: React.FC<{
+  line: string;
+  lineIndex: number;
+  /** 이 줄 앞에 있는 단어 수 (줄이 바뀌어도 순서대로 이어지게) */
+  before: number;
+  frame: number;
+  fps: number;
+  fontSize: number;
+  weight: number;
+  accent: Accent;
+  instant: boolean;
+}> = ({ line, lineIndex, before, frame, fps, fontSize, weight, accent, instant }) => {
+  const tokens = React.useMemo(() => emphasize(line), [line]);
+  const { titleReveal, wordStaggerFrames, emphasis } = STYLE.motion;
+  const byWord = titleReveal === 'word';
+  const accentColor =
+    emphasis.color === 'primary' ? accent.primary : emphasis.color === 'soft' ? accent.soft : accent.bright;
+
+  return (
+    <div
+      style={{
+        fontSize,
+        lineHeight: 1.26,
+        fontWeight: weight,
+        color: BASE.white,
+        letterSpacing: '-0.035em',
+        wordBreak: 'keep-all',
+        textShadow: '0 8px 30px rgba(0,0,0,0.45)',
+      }}
+    >
+      {tokens.map((t, i) => {
+        // 줄 단위 연출이면 줄 안의 단어는 다 같이 들어온다
+        const order = byWord ? before + i : lineIndex * 3;
+        const delay = byWord ? order * wordStaggerFrames : order;
+        const hot = emphasis.enabled && t.emphasis;
+
+        const enter = instant
+          ? 1
+          : spring({
+              frame: frame - delay,
+              fps,
+              config: hot && emphasis.bounce
+                ? { damping: 11, mass: 0.5, stiffness: 190 } // 튕기며
+                : { damping: 200, mass: 0.6, stiffness: 130 },
+              durationInFrames: 20,
+            });
+
+        return (
+          <span
+            key={i}
+            style={{
+              display: 'inline-block',
+              whiteSpace: 'pre',
+              color: hot ? accentColor : undefined,
+              fontSize: hot ? fontSize * emphasis.scale : undefined,
+              fontWeight: hot ? 900 : undefined,
+              // 강조 글자를 키워도 줄 높이가 밀리지 않게 아래로만 정렬한다
+              verticalAlign: hot ? '-0.04em' : undefined,
+              opacity: instant ? 1 : interpolate(enter, [0, 0.35], [0, 1], {
+                extrapolateRight: 'clamp',
+              }),
+              transform: instant
+                ? undefined
+                : `translateY(${interpolate(enter, [0, 1], [hot ? 34 : 22, 0])}px)` +
+                  (hot ? ` scale(${interpolate(enter, [0, 1], [0.7, 1])})` : ''),
+            }}
+          >
+            {t.text}
+          </span>
+        );
+      })}
+    </div>
   );
 };

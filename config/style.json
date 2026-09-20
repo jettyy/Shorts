@@ -1,0 +1,35 @@
+{
+  "_": "연출 설정. 고치고 다시 렌더하면 바로 반영된다. 값 설명은 config/README.md 참고.",
+
+  "hook": {
+    "style": "number-first"
+  },
+
+  "motion": {
+    "titleReveal": "word",
+    "wordStaggerFrames": 2,
+    "emphasis": {
+      "enabled": true,
+      "scale": 1.16,
+      "bounce": true,
+      "color": "bright"
+    }
+  },
+
+  "rank": {
+    "reveal": "bottom-up"
+  },
+
+  "audio": {
+    "speed": 1.1,
+    "gapSec": 0.4,
+    "bgm": {
+      "enabled": false,
+      "track": "",
+      "gainDb": -20,
+      "duckDb": -8,
+      "duckAttackMs": 20,
+      "duckReleaseMs": 350
+    }
+  }
+}

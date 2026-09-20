@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './prompt.mjs';
 import { withPublishCopy } from './publish-copy.mjs';
 import { createYouTube } from './youtube.mjs';
+import { loadStyle } from './style-config.mjs';
 import { findBrowser } from '../scripts/find-browser.mjs';
 import { setupFonts } from '../scripts/setup-fonts.mjs';
 
@@ -617,6 +618,15 @@ const openStream = (res, jobId, req) => {
   req.on('close', () => streams.delete(jobId));
 };
 
+/**
+ * 훅 문구 방식을 정해서 붙인다.
+ * 화면에서 고른 값이 있으면 그걸 쓰고, 없으면 config/style.json 의 값을 쓴다.
+ */
+const withHookStyle = (body) => ({
+  ...body,
+  hookStyle: body.hookStyle || loadStyle().hook.style,
+});
+
 /* ── 라우트 ──────────────────────────────────────────────── */
 
 const routes = {
@@ -650,7 +660,7 @@ const routes = {
   /** 지시문만 돌려준다 — CLI 없이 수동으로 돌릴 때 복사해서 쓴다 */
   'POST /api/prompt': async (req, res) => {
     const body = JSON.parse((await readBody(req)).toString('utf8'));
-    json(res, 200, { prompt: buildPrompt(body) });
+    json(res, 200, { prompt: buildPrompt(withHookStyle(body)) });
   },
 
   /**
@@ -679,7 +689,7 @@ const routes = {
 
     // 클라이언트가 SSE 에 붙을 시간을 준 뒤 시작한다
     setTimeout(() => {
-      const prompt = buildPrompt(body);
+      const prompt = buildPrompt(withHookStyle(body));
       console.log(`[분석] 시작 — 원문 ${body.text.length}자, 카드 ${body.cardCount ?? 7}장`);
 
       const started = Date.now();

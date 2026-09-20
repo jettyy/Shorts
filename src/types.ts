@@ -127,6 +127,16 @@ export type RankListVisual = {
   }[];
   /** 전체 순위 개수 (예: 20). 주면 "20위 중" 같은 안내가 붙는다 */
   totalRanks?: number;
+  /**
+   * 순위를 **어떤 순서로 등장**시킬지. 생략하면 `config/style.json` 의 값을 쓴다.
+   *
+   * 목록이 위에서 아래로 그냥 깔리면 "다 봤다"는 느낌이 들어 중간에 나간다.
+   * 무엇을 언제 보여주느냐가 시청 지속에 직결된다.
+   *  - `bottom-up`   : 적힌 순서대로 (기본)
+   *  - `winner-first`: **1위를 먼저 꽂고** 나머지를 잇는다 — 결론 선공개
+   *  - `countdown`   : 아래쪽부터 거꾸로 올라온다 — 3위→2위→1위
+   */
+  reveal?: 'bottom-up' | 'winner-first' | 'countdown';
 };
 
 export type Visual =
