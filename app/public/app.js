@@ -1080,10 +1080,17 @@ $('#btnYtUpload').addEventListener('click', async () => {
 
     const es = new EventSource(`/api/youtube/upload/stream?job=${jobId}`);
     es.addEventListener('progress', (ev) => {
-      const { sent, total } = JSON.parse(ev.data);
-      const pct = (sent / total) * 100;
-      $('#ytPhase').textContent = `업로드 중 — ${(sent / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB`;
-      $('#ytBar').style.width = `${pct}%`;
+      const { sent, total, retry } = JSON.parse(ev.data);
+      // 끊겨서 다시 보내는 중 — 진행률을 0으로 되돌리고 이유를 알려준다
+      if (retry) {
+        $('#ytPhase').textContent = `연결이 끊겨서 다시 올리는 중… (${retry + 1}번째 시도)`;
+        $('#ytBar').style.width = '0%';
+        return;
+      }
+      if (!total) return;
+      $('#ytPhase').textContent =
+        `업로드 중 — ${(sent / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB`;
+      $('#ytBar').style.width = `${(sent / total) * 100}%`;
     });
     es.addEventListener('done', (ev) => {
       es.close();

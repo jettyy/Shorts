@@ -15,6 +15,7 @@
  */
 import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -101,7 +102,7 @@ export const createYouTube = (dataDir) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(body),
-    });
+    }).catch(netFail('구글에 연결하는 중'));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error_description ?? data.error ?? `구글 응답 오류 (${res.status})`);
@@ -172,7 +173,7 @@ export const createYouTube = (dataDir) => {
   const api = async (token, path) => {
     const res = await fetch(`https://www.googleapis.com/youtube/v3/${path}`, {
       headers: { Authorization: `Bearer ${token}` },
-    });
+    }).catch(netFail('유튜브에 연결하는 중'));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const err = new Error(explain(data, res.status));
@@ -183,12 +184,20 @@ export const createYouTube = (dataDir) => {
     return data;
   };
 
-  /** 기준 시각에서 3~5시간 뒤, 5분 단위로 */
+  /**
+   * 기준 시각에서 3~5시간 뒤, 5분 단위로.
+   *
+   * 시:분을 5분 단위로 맞추면 보기 좋지만, 반올림이 내려가면 3시간보다 짧아질 수 있다.
+   * (예: 기준 +3시간 1분 → 3시간 0분 아래로 내려감)
+   * 그래서 내려간 경우에만 5분을 더해 **최소 간격을 항상 지킨다.**
+   */
   const randomSlotAfter = (base) => {
+    const min = base.getTime() + GAP_MIN_H * 3600_000;
     const gap = (GAP_MIN_H + Math.random() * (GAP_MAX_H - GAP_MIN_H)) * 3600_000;
     const t = new Date(base.getTime() + gap);
     t.setSeconds(0, 0);
     t.setMinutes(Math.round(t.getMinutes() / 5) * 5);
+    if (t.getTime() < min) t.setMinutes(t.getMinutes() + 5);
     return t;
   };
 
@@ -251,6 +260,26 @@ export const createYouTube = (dataDir) => {
   };
 
   /**
+   * fetch 가 네트워크 단계에서 실패했을 때 쓰는 래퍼.
+   *
+   * Node 의 fetch 는 어떤 이유로 실패하든 메시지가 **"fetch failed"** 한 줄이다.
+   * 진짜 원인(끊김·DNS·타임아웃·길이 불일치 등)은 `error.cause` 에 들어 있어서
+   * 그냥 e.message 를 보여주면 아무 단서도 안 남는다. 원인을 꺼내서 붙여준다.
+   */
+  const netFail = (what) => (e) => {
+    const cause = e?.cause;
+    const detail = [cause?.code, cause?.message].filter(Boolean).join(' — ');
+    const err = new Error(
+      `${what} 연결이 끊겼습니다.\n` +
+        (detail ? `원인: ${detail}\n` : '') +
+        '인터넷 연결을 확인하고 다시 시도해주세요. ' +
+        '파일이 크면 업로드 도중 끊기기도 합니다.',
+    );
+    err.network = true; // 재시도해볼 만한 실패라는 표시
+    throw err;
+  };
+
+  /**
    * 유튜브가 돌려준 오류를 사람이 읽고 바로 고칠 수 있는 문장으로 바꾼다.
    *
    * 구글 오류는 영어 JSON 그대로 나와서 "뭘 어떻게 하라는 건지" 알기 어렵다.
@@ -308,8 +337,33 @@ export const createYouTube = (dataDir) => {
    * mode: 'public' | 'private' | 'schedule'
    * publishAt: schedule 일 때 ISO 8601 문자열
    */
+  /** 업로드 재시도 횟수 — 끊김은 흔하고, 5MB 남짓이라 처음부터 다시 보내도 부담이 적다 */
+  const UPLOAD_TRIES = 3;
+
   const upload = async ({ filePath, meta, mode, publishAt, onProgress }) => {
     if (!existsSync(filePath)) throw new Error('업로드할 영상 파일이 없습니다.');
+
+    let lastError;
+    for (let attempt = 1; attempt <= UPLOAD_TRIES; attempt++) {
+      try {
+        return await uploadOnce({ filePath, meta, mode, publishAt, onProgress, attempt });
+      } catch (e) {
+        lastError = e;
+        /*
+         * 끊김(network)만 다시 시도한다.
+         * 할당량 초과나 API 미사용 설정 같은 건 몇 번을 보내도 똑같이 실패하고,
+         * 업로드 1건에 1600 units 를 쓰므로 괜히 할당량만 태운다.
+         */
+        if (!e.network || attempt === UPLOAD_TRIES) throw e;
+        console.warn(`[유튜브] 업로드 ${attempt}번째 시도 실패, 다시 시도합니다 — ${e.message.split('\n')[0]}`);
+        onProgress?.({ sent: 0, total: 0, retry: attempt });
+        await new Promise((r) => setTimeout(r, attempt * 2000));
+      }
+    }
+    throw lastError;
+  };
+
+  const uploadOnce = async ({ filePath, meta, mode, publishAt, onProgress }) => {
     const token = await accessToken();
     const size = statSync(filePath).size;
 
@@ -339,7 +393,7 @@ export const createYouTube = (dataDir) => {
         'X-Upload-Content-Type': 'video/mp4',
       },
       body: JSON.stringify(body),
-    });
+    }).catch(netFail('업로드를 시작하는 중'));
     if (!start.ok) {
       const text = await start.text();
       let parsed = {};
@@ -353,20 +407,35 @@ export const createYouTube = (dataDir) => {
     const sessionUrl = start.headers.get('location');
     if (!sessionUrl) throw new Error('업로드 세션 주소를 받지 못했습니다.');
 
-    // 2) 본문 전송 — 진행률을 보고한다
+    /*
+     * 2) 본문 전송 — 진행률을 보고한다
+     *
+     * ⚠️ 진행률을 재겠다고 `stream.on('data', …)` 를 붙이면 안 된다.
+     *    리스너를 붙이는 순간 스트림이 flowing 모드로 바뀌어 곧바로 데이터를 흘리는데,
+     *    fetch(undici)가 읽기 시작하기 전에 흘러나간 조각은 그대로 사라진다.
+     *    그러면 실제 보낸 양이 Content-Length 보다 적어서 undici 가 요청을 끊고,
+     *    화면에는 이유를 알 수 없는 "fetch failed" 만 뜬다
+     *    (실제 원인은 UND_ERR_REQ_CONTENT_LENGTH_MISMATCH).
+     *
+     *    그래서 **보내는 쪽에서 직접 조각을 꺼내 세고 그대로 넘긴다.**
+     *    yield 한 조각만 세므로 진행률도 실제 전송량과 정확히 같다.
+     */
     let sent = 0;
-    const stream = createReadStream(filePath);
-    stream.on('data', (chunk) => {
-      sent += chunk.length;
-      onProgress?.({ sent, total: size });
-    });
+    async function* readWithProgress() {
+      for await (const chunk of createReadStream(filePath)) {
+        sent += chunk.length;
+        onProgress?.({ sent, total: size });
+        yield chunk;
+      }
+    }
 
     const res = await fetch(sessionUrl, {
       method: 'PUT',
       headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(size) },
-      body: stream,
+      body: Readable.from(readWithProgress()),
       duplex: 'half',
-    });
+    }).catch(netFail('영상 본문을 올리는 중'));
+
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(explain(data, res.status));
 

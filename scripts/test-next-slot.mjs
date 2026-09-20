@@ -92,10 +92,10 @@ const check = (name, cond, extra = '') => {
   const latest = now + 30 * H;
   stub({ videos: [{ publishAt: iso(latest) }] });
   const runs = [];
-  for (let i = 0; i < 30; i++) runs.push((await yt.nextSlot()).suggested);
+  for (let i = 0; i < 400; i++) runs.push((await yt.nextSlot()).suggested);
   const uniq = new Set(runs).size;
   const gaps = runs.map((s) => (new Date(s) - latest) / H);
-  console.log('\n[2] 30번 돌렸을 때');
+  console.log('\n[2] 400번 돌렸을 때 (5분 반올림이 경계를 넘지 않는지)');
   check('매번 같은 시각이 아니다 (랜덤)', uniq > 5, `서로 다른 값 ${uniq}개`);
   check('전부 3~5시간 안에 있다', gaps.every((g) => g >= 3 && g <= 5),
     `${Math.min(...gaps).toFixed(2)}~${Math.max(...gaps).toFixed(2)}시간`);

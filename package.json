@@ -14,7 +14,8 @@
     "still": "node scripts/still.mjs",
     "upgrade": "remotion upgrade",
     "test:slot": "node scripts/test-next-slot.mjs",
-    "test:yt": "node scripts/test-yt-errors.mjs"
+    "test:yt": "node scripts/test-yt-errors.mjs",
+    "test:upload": "node scripts/test-yt-upload.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.526",

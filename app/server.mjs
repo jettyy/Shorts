@@ -1220,7 +1220,8 @@ const routes = {
           meta: body.meta ?? {},
           mode: body.mode ?? 'private',
           publishAt: body.publishAt,
-          onProgress: ({ sent, total }) => sendEvent(jobId, 'progress', { sent, total }),
+          onProgress: ({ sent, total, retry }) =>
+            sendEvent(jobId, 'progress', { sent, total, retry }),
         });
         console.log(`[유튜브] 완료 — ${result.url}`);
         sendEvent(jobId, 'done', result);
