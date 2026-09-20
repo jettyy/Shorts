@@ -93,6 +93,21 @@ const readBody = (req, limit = 80 * 1024 * 1024) =>
     req.on('error', fail);
   });
 
+/**
+ * 파일 저장용 Content-Disposition 값.
+ *
+ * 한글 파일명은 filename*=UTF-8'' 로 보내야 하는데, 이것만 있으면
+ * 못 읽고 "download" 로 저장해버리는 클라이언트가 있다.
+ * 그래서 ASCII 로 바꾼 이름을 filename= 에 같이 넣어준다(RFC 6266 권장).
+ */
+const attachment = (filename) => {
+  const ascii = filename
+    .replace(/[^\x20-\x7E]/g, '_')   // 한글 등은 밑줄로
+    .replace(/["\\]/g, '_')
+    .replace(/_+/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+};
+
 const loadScript = () => (existsSync(SCRIPT_PATH) ? JSON.parse(readFileSync(SCRIPT_PATH, 'utf8')) : null);
 const saveScript = (data) => writeFileSync(SCRIPT_PATH, JSON.stringify(data, null, 2) + '\n', 'utf8');
 
@@ -888,14 +903,15 @@ const routes = {
     json(res, 200, { jobId });
 
     setTimeout(() => {
+      // 파일명은 "날짜시간_제목" 순서. 만든 순서대로 정렬되는 게 찾기 편하다.
       const slug = String(script.topic ?? '')
-        .replace(/[\\/:*?"<>|\s]+/g, '_')
-        .replace(/^_+|_+$/g, '')
-        .slice(0, 40);
+        .replace(/[\\/:*?"<>|]+/g, '')
+        .replace(/\s+/g, '')
+        .slice(0, 30);
       const pad = (n) => String(n).padStart(2, '0');
       const d = new Date();
       const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-      const fileName = `쇼츠_${slug || '무제'}_${stamp}.mp4`;
+      const fileName = `${stamp}_${slug || '무제'}.mp4`;
       const browser = findBrowser();
 
       const p = spawnRemotion([
@@ -953,6 +969,65 @@ const routes = {
     const script = loadScript();
     if (!script) return json(res, 400, { error: '대본이 없습니다.' });
     json(res, 200, { copy: withPublishCopy(script) });
+  },
+
+  /**
+   * 업로드 문구를 txt 파일로 내려준다 (렌더가 끝나면 자동으로 저장된다).
+   *
+   * 윈도우 메모장에서 한글이 깨지지 않도록 BOM 을 붙이고 줄바꿈을 CRLF 로 맞춘다.
+   */
+  'GET /api/publish/copy.txt': async (req, res, url) => {
+    const script = loadScript();
+    if (!script) return json(res, 400, { error: '대본이 없습니다.' });
+
+    const copy = withPublishCopy(script);
+    const src = script.source ?? {};
+    const totalSec = (script.cards ?? []).reduce((a, c) => a + (Number(c.durationSec) || 0), 0);
+    const bar = '━'.repeat(32);
+    const section = (title, body) => [bar, `■ ${title}`, bar, '', body, ''].join('\n');
+
+    const text = [
+      script.topic ?? '제목 없음',
+      `카드 ${script.cards?.length ?? 0}장 · ${(Math.round(totalSec * 10) / 10).toFixed(1)}초 · 1080×1920`,
+      '',
+      section(
+        '유튜브',
+        [
+          '[제목]',
+          copy.youtube.title,
+          '',
+          '[설명]',
+          copy.youtube.description,
+          '',
+          '[태그]',
+          (copy.youtube.tags ?? []).join(', '),
+        ].join('\n'),
+      ),
+      section('인스타그램', copy.instagram.caption),
+      section('쓰레드', copy.threads.text),
+      section(
+        '출처',
+        [
+          `제목: ${src.title ?? '-'}`,
+          `매체: ${src.publisher || '-'}`,
+          `주소: ${src.url ?? '-'}`,
+          `확인 기준일: ${src.checkedOn ?? '-'}`,
+        ].join('\n'),
+      ),
+    ].join('\n');
+
+    // 메모장 호환: BOM + CRLF
+    const payload = Buffer.from('\uFEFF' + text.replace(/\n/g, '\r\n'), 'utf8');
+    const base = (url.searchParams.get('name') ?? script.topic ?? '문구')
+      .replace(/\.mp4$/i, '')
+      .replace(/[\\/:*?"<>|]+/g, '_');
+
+    res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Length': payload.length,
+      'Content-Disposition': attachment(`${base}_문구.txt`),
+    });
+    res.end(payload);
   },
 
   /** 올릴 수 있는 완성 영상 목록 (최신순) */
@@ -1100,8 +1175,7 @@ const serveFile = (res, file, download = false) => {
   }
   const headers = { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream' };
   if (download) {
-    headers['Content-Disposition'] =
-      `attachment; filename*=UTF-8''${encodeURIComponent(file.split(/[\\/]/).pop())}`;
+    headers['Content-Disposition'] = attachment(file.split(/[\\/]/).pop());
   }
   res.writeHead(200, headers);
   createReadStream(file).pipe(res);

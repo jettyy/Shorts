@@ -39,11 +39,12 @@ const stamp =
 
 // 주제가 있으면 파일명에 붙여 나중에 구분하기 쉽게 한다.
 const slug = String(data.topic ?? '')
-  .replace(/[\\/:*?"<>|\s]+/g, '_')
-  .replace(/^_+|_+$/g, '')
-  .slice(0, 40);
+  .replace(/[\\/:*?"<>|]+/g, '')
+  .replace(/\s+/g, '')
+  .slice(0, 30);
 
-const fileName = slug ? `카드뉴스_${slug}_${stamp}.mp4` : `카드뉴스_${stamp}.mp4`;
+// 파일명은 "날짜시간_제목" 순서. 만든 순서대로 정렬되는 게 찾기 편하다.
+const fileName = `${stamp}_${slug || '무제'}.mp4`;
 const outPath = join('output', fileName);
 
 const totalSec = data.cards.reduce((s, c) => s + (Number(c.durationSec) || 0), 0);

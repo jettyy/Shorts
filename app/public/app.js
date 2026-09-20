@@ -581,14 +581,22 @@ $('#btnRender').addEventListener('click', async () => {
       $('#renderBox').classList.add('hidden');
       $('#resultBox').classList.remove('hidden');
       $('#resultVideo').src = d.url;
-      $('#btnDownload').href = d.url;
-      $('#btnDownload').setAttribute('download', d.file);
       $('#btnRender').disabled = false;
       toast('영상이 완성됐습니다');
+
+      const copyUrl = `/api/publish/copy.txt?name=${encodeURIComponent(d.file)}`;
+      const txtName = `${d.file.replace(/\.mp4$/i, '')}_문구.txt`;
+      $('#btnDownload').href = d.url;
+      $('#btnDownload').setAttribute('download', d.file);
+      $('#btnDownloadCopy').href = copyUrl;
+      $('#btnDownloadCopy').setAttribute('download', txtName);
+
       // 완성됐으니 업로드 섹션을 연다
       $('#publishBox').classList.remove('hidden');
       loadPublishCopy().catch((err) => toast(err.message, true));
       refreshYt().catch(() => {});
+
+      autoSave(d.url, d.file, copyUrl, txtName);
     });
     es.addEventListener('error', (ev) => {
       es.close();
@@ -605,6 +613,43 @@ $('#btnRender').addEventListener('click', async () => {
     toast(e.message, true);
   }
 });
+
+/** 링크를 만들어 눌러서 파일 하나를 내려받는다 */
+const triggerDownload = (url, filename) => {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+};
+
+/**
+ * 렌더가 끝나면 영상과 문구를 자동으로 저장한다.
+ *
+ * 브라우저는 한 사이트가 파일을 여러 개 자동으로 내려받으려 하면 한 번 물어본다.
+ * (주소창에 "여러 파일 다운로드" 허용 여부) 그래서 두 번째는 잠깐 띄우고 보내고,
+ * 막혔을 수도 있으니 아래 버튼으로 직접 받을 수 있다는 안내를 같이 띄운다.
+ */
+function autoSave(videoUrl, videoName, copyUrl, copyName) {
+  const note = $('#savedNote');
+  try {
+    triggerDownload(videoUrl, videoName);
+    setTimeout(() => triggerDownload(copyUrl, copyName), 900);
+    note.className = 'saved-note';
+    note.innerHTML =
+      '<b>다운로드 폴더에 저장했습니다.</b><br>' +
+      `· ${escapeHtml(videoName)}<br>` +
+      `· ${escapeHtml(copyName)}<br>` +
+      '브라우저가 "여러 파일 다운로드"를 물어보면 <b>허용</b>을 눌러주세요. ' +
+      '안 받아졌다면 아래 버튼으로 직접 받을 수 있습니다.';
+  } catch {
+    note.className = 'saved-note warn';
+    note.textContent = '자동 저장에 실패했습니다. 아래 버튼으로 직접 내려받아 주세요.';
+  }
+  note.classList.remove('hidden');
+}
 
 $('#btnRestart').addEventListener('click', () => {
   $('#sourceText').value = '';
