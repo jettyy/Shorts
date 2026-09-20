@@ -357,3 +357,22 @@ button, .primary {
 }
 .yt-result a { color: var(--gold-bright); }
 .yt-result.err { border-color: rgba(255, 122, 107, 0.45); background: rgba(255, 122, 107, 0.08); color: #ffc2b9; }
+
+/* ── 속도 / 여백 ────────────────────────── */
+.tempo {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035); padding: 18px 20px; margin-bottom: 22px;
+}
+.tempo-row { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.tempo-label { font-size: 13.5px; font-weight: 700; color: var(--text-2); min-width: 92px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button {
+  border: none; border-radius: 0; padding: 9px 16px; font-size: 13.5px; font-weight: 700;
+  background: transparent; color: var(--text-3); border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: none; }
+.seg button:hover { background: rgba(255, 255, 255, 0.06); color: var(--text-2); }
+.seg button.on { background: var(--gold); color: #241703; }
+.seg button:disabled { opacity: 0.5; cursor: wait; }
+.tempo-note { font-size: 12.5px; color: var(--text-3); line-height: 1.75; margin-top: 4px; }
+.tempo-note b { color: #ffc2b9; }

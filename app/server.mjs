@@ -355,12 +355,66 @@ const extractJson = (text) => {
  * 각 카드 길이를 그 카드 녹음 길이에 맞춰 다시 잡기 때문에 음성과 화면이 정확히 붙는다.
  * 렌더 직전에도 한 번 더 부르기 때문에, 녹음을 고치고 바로 렌더해도 어긋나지 않는다.
  */
+/* ── 렌더 설정 (속도 / 카드 사이 여백) ──────────────────── */
+
+const SETTINGS_PATH = join(root, 'app', 'data', 'render-settings.json');
+
+/** 목소리가 자연스럽고 도표도 읽히는 범위만 허용한다. 2배속은 넣지 않는다. */
+const ALLOWED_SPEEDS = [1, 1.1, 1.25];
+const DEFAULT_SETTINGS = { speed: 1, gapSec: 0.4 };
+
+const loadSettings = () => {
+  try {
+    const s = JSON.parse(readFileSync(SETTINGS_PATH, 'utf8'));
+    return {
+      speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : DEFAULT_SETTINGS.speed,
+      gapSec: Math.min(Math.max(Number(s.gapSec) || DEFAULT_SETTINGS.gapSec, 0.15), 0.8),
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+};
+
+const saveSettings = (s) => {
+  const next = {
+    speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : DEFAULT_SETTINGS.speed,
+    gapSec: Math.min(Math.max(Number(s.gapSec) || DEFAULT_SETTINGS.gapSec, 0.15), 0.8),
+  };
+  writeFileSync(SETTINGS_PATH, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+};
+
+/** 0.1초 단위로 맞춘다. 30fps에서 0.1초 = 정확히 3프레임이라 영상과 소리가 어긋나지 않는다. */
+const toTenth = (sec) => Math.round(sec * 10) / 10;
+
+/** 내레이션을 읽는 데 걸리는 시간 (녹음이 없는 카드용, `npm run narration --fit` 과 같은 기준) */
+const SPEAK_CPS = 5.2;
+const naturalDuration = (card) => {
+  const chars = (card?.narration ?? '').replace(/\s/g, '').length;
+  return Math.max(chars / SPEAK_CPS + 0.7, 2.5);
+};
+
+/**
+ * 녹음들을 하나의 내레이션 트랙으로 합친다.
+ *
+ * 각 카드 길이를 그 카드 녹음 길이에 맞춰 다시 잡기 때문에 음성과 화면이 정확히 붙는다.
+ * 렌더 직전에도 한 번 더 부르기 때문에, 녹음을 고치고 바로 렌더해도 어긋나지 않는다.
+ *
+ * 속도(speed)는 **녹음 파일과 카드 길이 양쪽에 같이** 적용한다.
+ *  - 소리는 atempo 로 빠르게 한다(음정은 그대로 유지된다)
+ *  - 카드 사이 여백(gapSec)은 속도를 적용한 뒤에 붙인다. 빨라져도 숨 쉴 틈은 남는다
+ *
+ * 길이 계산은 항상 "변하지 않는 값"에서 출발한다.
+ *  - 녹음이 있는 카드: 녹음 파일의 실제 길이
+ *  - 녹음이 없는 카드: 내레이션 글자 수
+ * 그래서 이 함수를 몇 번을 다시 돌려도 길이가 누적되지 않는다.
+ */
 const buildAudio = async () => {
   const script = loadScript();
   if (!script) throw new Error('대본이 없습니다.');
 
+  const { speed, gapSec } = loadSettings();
   const meta = readMeta();
-  const TAIL = 0.4; // 말이 끝나고 다음 카드로 넘어가기 전 여유
   const parts = [];
   let recorded = 0;
 
@@ -368,27 +422,36 @@ const buildAudio = async () => {
     const clip = join(CLIPS_DIR, `card-${i}.wav`);
     const padded = join(CLIPS_DIR, `part-${i}.wav`);
     let dur;
+
     if (existsSync(clip)) {
-      const d = meta[i] ?? (await probeDuration(clip));
-      dur = Math.max(Math.round((d + TAIL) * 10) / 10, 2);
-      // 녹음 뒤에 무음을 붙여 카드 길이에 정확히 맞춘다
-      await runFfmpeg(['-y', '-i', clip, '-af', 'apad', '-t', String(dur), '-ar', '48000', '-ac', '1', padded]);
+      const spoken = (meta[i] ?? (await probeDuration(clip))) / speed;
+      dur = Math.max(toTenth(spoken + gapSec), 2);
+      // 빠르게 만든 뒤(atempo), 카드 길이에 정확히 맞도록 뒤에 무음을 덧댄다
+      const filter = speed === 1 ? 'apad' : `atempo=${speed},apad`;
+      await runFfmpeg([
+        '-y', '-i', clip, '-af', filter, '-t', String(dur),
+        '-ar', '48000', '-ac', '1', padded,
+      ]);
       recorded += 1;
     } else {
-      // 녹음이 없는 카드는 기존 길이만큼 무음
-      dur = Math.max(Number(script.cards[i].durationSec) || 3, 2);
-      await runFfmpeg(['-y', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(dur), padded]);
+      // 녹음이 없는 카드는 읽는 데 걸릴 시간만큼 무음을 둔다
+      dur = Math.max(toTenth(naturalDuration(script.cards[i]) / speed), 2);
+      await runFfmpeg([
+        '-y', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', String(dur), padded,
+      ]);
     }
+
     script.cards[i].durationSec = dur;
     parts.push(padded);
   }
+
+  const totalSec = toTenth(script.cards.reduce((a, c) => a + c.durationSec, 0));
 
   if (recorded === 0) {
     // 녹음이 하나도 없으면 무음 트랙을 붙이지 않는다
     delete script.narrationAudio;
     saveScript(script);
-    const total = script.cards.reduce((a, c) => a + c.durationSec, 0);
-    return { recorded: 0, totalSec: Math.round(total * 10) / 10, url: null };
+    return { recorded: 0, totalSec, speed, gapSec, url: null };
   }
 
   const listFile = join(CLIPS_DIR, 'concat.txt');
@@ -399,8 +462,7 @@ const buildAudio = async () => {
   script.narrationAudio = 'audio/narration.mp3';
   saveScript(script);
 
-  const total = script.cards.reduce((a, c) => a + c.durationSec, 0);
-  return { recorded, totalSec: Math.round(total * 10) / 10, url: `/audio/narration.mp3?t=${Date.now()}` };
+  return { recorded, totalSec, speed, gapSec, url: `/audio/narration.mp3?t=${Date.now()}` };
 };
 
 /* ── 진행 상황 스트림 (SSE) ──────────────────────────────── */
@@ -809,6 +871,17 @@ const routes = {
         endStream(jobId);
       });
     }, 30);
+  },
+
+  /* ── 렌더 설정 ──────────────────────────────────────── */
+
+  'GET /api/settings': async (req, res) => {
+    json(res, 200, { ...loadSettings(), allowedSpeeds: ALLOWED_SPEEDS });
+  },
+
+  'POST /api/settings': async (req, res) => {
+    const body = JSON.parse((await readBody(req)).toString('utf8'));
+    json(res, 200, { ...saveSettings(body), allowedSpeeds: ALLOWED_SPEEDS });
   },
 
   /** 플랫폼별 업로드 문구 */

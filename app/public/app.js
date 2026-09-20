@@ -512,11 +512,15 @@ $('#btnBuildAudio').addEventListener('click', async () => {
 
 function renderFinal(build) {
   const s = state.script;
-  const recorded = Object.keys(state.clips).length;
+  // 3단계를 거치지 않고 바로 4단계로 오면 state.clips 가 비어 있다.
+  // 합치기 결과(build.recorded)가 있으면 그걸 우선 믿는다.
+  const recorded = build?.recorded ?? Object.keys(state.clips).length;
+  const speed = build?.speed ?? state.settings?.speed ?? 1;
   $('#finalInfo').innerHTML = [
     ['주제', s.topic ?? '-'],
     ['카드', `${s.cards.length}장`],
     ['전체 길이', fmtSec(build?.totalSec ?? s.cards.reduce((a, c) => a + c.durationSec, 0))],
+    ['재생 속도', speed === 1 ? '보통' : `${speed}배`],
     ['내레이션', recorded > 0 ? `${recorded}장 녹음 적용` : '없음 (무음)'],
     ['해상도', '1080 × 1920 · 30fps'],
   ]
@@ -607,7 +611,12 @@ $('#steps').addEventListener('click', (e) => {
     });
     return;
   }
-  if (n === 4) renderFinal();
+  if (n === 4) {
+    // 녹음 개수를 알아야 "내레이션" 표시가 맞는다
+    loadClips()
+      .then(() => renderFinal())
+      .catch(() => renderFinal());
+  }
   goStep(n);
 });
 
@@ -616,6 +625,9 @@ $('#steps').addEventListener('click', (e) => {
 (async () => {
   $('#srcChecked').value = new Date().toISOString().slice(0, 10);
   try {
+    state.settings = await api('/api/settings');
+    markTempo(state.settings);
+
     const st = await api('/api/status');
     $('#status').innerHTML = st.claudeCli
       ? '대본 생성 <b>자동</b> (Claude Code)'
@@ -956,4 +968,51 @@ $('#btnMicCheck').addEventListener('click', async () => {
     btn.disabled = false;
     btn.textContent = '마이크 점검';
   }
+});
+
+/* ── 재생 속도 / 카드 사이 여백 ──────────────────────── */
+
+/** 고른 값에 맞춰 버튼 강조를 갱신한다 */
+function markTempo({ speed, gapSec }) {
+  $$('#speedSeg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === speed));
+  $$('#gapSeg button').forEach((b) => b.classList.toggle('on', Number(b.dataset.gap) === gapSec));
+}
+
+/**
+ * 설정을 저장하고 내레이션을 다시 합친다.
+ * 길이 계산이 항상 녹음 파일·내레이션 글자 수에서 출발하므로,
+ * 값을 여러 번 바꿔도 길이가 누적되지 않는다.
+ */
+async function applyTempo(next) {
+  const buttons = $$('#speedSeg button, #gapSeg button');
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    state.settings = await api('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(next),
+    });
+    markTempo(state.settings);
+
+    const build = await api('/api/audio/build', { method: 'POST' });
+    state.script = await api('/api/script');
+    renderFinal(build);
+    toast(`전체 길이 ${fmtSec(build.totalSec)}`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+$('#speedSeg').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || btn.disabled) return;
+  applyTempo({ ...state.settings, speed: Number(btn.dataset.speed) });
+});
+
+$('#gapSeg').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn || btn.disabled) return;
+  applyTempo({ ...state.settings, gapSec: Number(btn.dataset.gap) });
 });

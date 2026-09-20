@@ -126,6 +126,29 @@
 
     <div class="final" id="finalInfo"></div>
 
+    <div class="tempo">
+      <div class="tempo-row">
+        <span class="tempo-label">재생 속도</span>
+        <div class="seg" id="speedSeg">
+          <button data-speed="1" class="on">보통</button>
+          <button data-speed="1.1">1.1배</button>
+          <button data-speed="1.25">1.25배</button>
+        </div>
+      </div>
+      <div class="tempo-row">
+        <span class="tempo-label">카드 사이 여백</span>
+        <div class="seg" id="gapSeg">
+          <button data-gap="0.25">짧게 0.25초</button>
+          <button data-gap="0.3">0.3초</button>
+          <button data-gap="0.4" class="on">넉넉히 0.4초</button>
+        </div>
+      </div>
+      <div class="tempo-note">
+        속도를 올리면 목소리도 같이 빨라집니다(음정은 그대로). 여백은 속도와 상관없이 유지됩니다.<br>
+        <b>2배속은 넣지 않았습니다</b> — 도표를 읽을 시간이 없어지고 목소리가 부자연스러워집니다.
+      </div>
+    </div>
+
     <div class="preview-audio hidden" id="audioPreview">
       <h3>합쳐진 내레이션 미리듣기</h3>
       <audio id="fullAudio" controls></audio>
