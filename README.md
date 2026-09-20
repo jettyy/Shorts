@@ -219,6 +219,44 @@ npm run render              # 렌더링
 > 에 **업로드할 유튜브 채널의 구글 계정**을 추가하세요.
 > 구글 클라우드 프로젝트를 만든 계정과 유튜브 채널 계정이 다르면, **채널 쪽 계정**을 넣어야 합니다.
 
+### ❗ `git pull` 이 "Your local changes would be overwritten" 으로 막힌다면
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+        src/script.json
+```
+
+`src/script.json` 은 **영상을 만들 때마다 덮어써지는 작업 파일**입니다.
+예전에는 이 파일이 저장소에 추적되고 있어서, 한 번이라도 영상을 만들면
+그 뒤로 `git pull` 이 계속 막혔습니다. **지금은 추적하지 않습니다**(틀은
+`src/script.default.json` 에 있고, 없으면 자동으로 만들어집니다).
+
+한 번만 아래처럼 정리하면 그 뒤로는 안 생깁니다.
+
+```bash
+cp src/script.json ~/script-backup.json   # 작업 중이던 대본을 남겨두고 싶다면
+git checkout -- src/script.json
+git pull
+npm install
+```
+
+### ❗ `npm start` 가 `EADDRINUSE ... port 4321` 로 죽는다면
+
+**예전에 켜둔 서버가 아직 돌고 있습니다.** 이때 브라우저를 열면 화면은 나오지만
+**예전 코드가 응답**해서, 고친 내용이 반영되지 않습니다.
+
+```bash
+# macOS / Linux
+lsof -ti:4321 | xargs kill
+
+# Windows
+netstat -ano | findstr :4321
+taskkill /PID <번호> /F
+```
+
+정리한 뒤 `npm start` 를 다시 하고, 터미널에 찍히는 **버전**과
+화면 오른쪽 위의 버전이 같은지 확인해주세요.
+
 ### ❗ "fetch failed" 만 뜬다면
 
 Node 의 `fetch` 는 어떤 이유로 실패하든 메시지가 **"fetch failed" 한 줄**이라,

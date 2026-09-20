@@ -31,6 +31,7 @@ import { loadStyle } from './style-config.mjs';
 import { bgmFilter, voicedWindows } from './audio-mix.mjs';
 import { findBrowser } from '../scripts/find-browser.mjs';
 import { setupFonts } from '../scripts/setup-fonts.mjs';
+import { ensureScript } from '../scripts/ensure-script.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
 const PUBLIC_DIR = join(root, 'app', 'public');
@@ -84,6 +85,7 @@ const spawnRemotion = (args) => {
 for (const dir of [CLIPS_DIR, AUDIO_DIR, OUTPUT_DIR, SOURCE_DIR]) mkdirSync(dir, { recursive: true });
 const youtube = createYouTube(join(root, 'app', 'data'));
 setupFonts({ silent: true });
+ensureScript();
 
 /* ── 유틸 ────────────────────────────────────────────────── */
 
@@ -1416,6 +1418,31 @@ const server = http.createServer(async (req, res) => {
  * 여기서 로그만 남기고 계속 살아 있게 한다.
  */
 process.on('uncaughtException', (e) => {
+  /*
+   * 포트가 이미 쓰이고 있으면 **서버는 켜지지 않았다.**
+   * 그런데 예전에는 여기서 "서버는 계속 동작합니다" 라고 찍어서, 켜진 줄 알고
+   * 브라우저를 열면 **예전에 띄워둔 서버**가 응답했다. 고친 코드가 반영이 안 된
+   * 이유를 한참 못 찾았다. 그러니 이 경우는 분명하게 알리고 종료한다.
+   */
+  if (e?.code === 'EADDRINUSE') {
+    console.error('');
+    console.error(`  ⛔  ${PORT} 번 포트를 이미 쓰고 있습니다. 서버가 켜지지 않았습니다.`);
+    console.error('');
+    console.error('      예전에 켜둔 서버가 아직 돌고 있을 가능성이 큽니다.');
+    console.error('      그 창에서 Ctrl+C 로 끄거나, 아래 명령으로 정리한 뒤 다시 실행해주세요.');
+    console.error('');
+    console.error(
+      process.platform === 'win32'
+        ? `        netstat -ano | findstr :${PORT}\n        taskkill /PID <번호> /F`
+        : `        lsof -ti:${PORT} | xargs kill`,
+    );
+    console.error('');
+    console.error('      ⚠️ 예전 서버가 켜져 있으면 화면은 열리지만 **예전 코드**가 응답합니다.');
+    console.error('         화면 오른쪽 위의 버전이 아래와 같은지 확인해주세요.');
+    console.error(`         버전: ${VERSION.label}`);
+    console.error('');
+    process.exit(1);
+  }
   console.error('\n[서버 오류] 처리되지 않은 예외 — 서버는 계속 동작합니다:');
   console.error(e);
 });

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node app/server.mjs",
     "ui": "node app/server.mjs",
-    "postinstall": "node scripts/setup-fonts.mjs",
+    "postinstall": "node scripts/setup-fonts.mjs && node scripts/ensure-script.mjs",
     "render": "node scripts/render.mjs",
     "check": "node scripts/check-script.mjs",
     "narration": "node scripts/narration.mjs",

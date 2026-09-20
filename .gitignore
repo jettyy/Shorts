@@ -7,6 +7,11 @@ public/fonts/
 
 # 분석용으로 붙여넣은 원문 — 저작물이므로 저장소에 올리지 않는다
 .source/
+# 작업 중인 대본 — 영상을 만들 때마다 덮어써진다.
+# 추적하면 영상을 한 번 만든 뒤부터 git pull 이 막힌다
+# ("Your local changes ... would be overwritten by merge").
+# 틀은 src/script.default.json 에 있고, 없으면 scripts/ensure-script.mjs 가 만들어 준다.
+src/script.json
 # 직접 녹음한 내레이션 오디오
 public/audio/
 # UI 작업 파일 (녹음 원본, 미리보기 이미지)
