@@ -1151,8 +1151,26 @@ const routes = {
       `<p style="margin-top:22px"><a href="/" style="color:#ffd874">앱으로 돌아가기</a></p></div>`;
 
     if (oauthError) {
+      /*
+       * access_denied 는 두 가지 경우에 온다.
+       *  1) 사용자가 동의 화면에서 [취소] 를 눌렀다
+       *  2) **앱이 "테스트" 상태인데 로그인한 계정이 테스트 사용자가 아니다** ← 대부분 이쪽
+       * 그냥 "취소됐습니다" 라고만 하면 2번인 사람이 원인을 못 찾는다.
+       */
+      const denied = oauthError === 'access_denied';
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(page('연결이 취소됐습니다', oauthError));
+      return res.end(
+        page(
+          denied ? '구글이 로그인을 막았습니다' : '연결에 실패했습니다',
+          denied
+            ? '동의 화면에서 취소했거나, 이 계정이 "테스트 사용자"로 등록돼 있지 않습니다.\n\n' +
+              'Google Cloud Console → Google 인증 플랫폼 → 대상(Audience) →\n' +
+              '테스트 사용자에 지금 로그인한 계정을 추가한 뒤 다시 시도해주세요.\n' +
+              '(예전 화면이면 OAuth 동의 화면 → 테스트 사용자)\n\n' +
+              `오류: ${oauthError}`
+            : oauthError,
+        ),
+      );
     }
     if (!code) {
       res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });

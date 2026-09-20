@@ -198,6 +198,19 @@
             에서 <b>사용자 인증 정보 → OAuth 클라이언트 ID → 데스크톱 앱</b>으로 만들고,
             <b>YouTube Data API v3</b>를 사용 설정한 뒤 아래에 붙여넣으세요.
           </p>
+          <div class="warn-inline">
+            ⚠️ <b>여기서 대부분 막힙니다 — 본인을 "테스트 사용자"로 먼저 등록하세요.</b><br>
+            등록하지 않으면 로그인할 때
+            <b>"액세스 차단됨 … 개발자가 승인한 테스터만 액세스할 수 있습니다 (403 access_denied)"</b>
+            가 뜹니다.<br>
+            <a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">Google 인증 플랫폼 → 대상(Audience)</a>
+            에서 <b>테스트 사용자 → Add users</b> 로 <b>업로드할 유튜브 채널의 구글 계정</b>을
+            추가하세요. (예전 화면이면 <b>OAuth 동의 화면 → 테스트 사용자</b>)<br>
+            <br>
+            그리고 <b>"테스트" 상태에서는 연결이 7일마다 끊깁니다</b>(구글 정책).
+            계속 쓰시려면 같은 화면에서 <b>앱 게시 → 프로덕션</b>으로 바꾸세요.
+            예약 발행을 걸어두고 7일이 지나면 업로드가 실패하므로, 이 설정을 권합니다.
+          </div>
           <div class="grid2">
             <label>클라이언트 ID <input id="ytClientId" placeholder="...apps.googleusercontent.com" /></label>
             <label>클라이언트 보안 비밀 <input id="ytClientSecret" type="password" placeholder="GOCSPX-..." /></label>
