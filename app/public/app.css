@@ -376,15 +376,3 @@ button, .primary {
 .seg button:disabled { opacity: 0.5; cursor: wait; }
 .tempo-note { font-size: 12.5px; color: var(--text-3); line-height: 1.75; margin-top: 4px; }
 .tempo-note b { color: #ffc2b9; }
-
-.bgm-select {
-  width: auto; min-width: 260px; padding: 9px 14px; font-size: 13.5px; font-weight: 700;
-  border-radius: 10px;
-}
-#bgmVol {
-  width: 220px; padding: 0; background: none; border: none; accent-color: var(--gold);
-}
-.bgm-vol-num {
-  font-size: 14px; font-weight: 800; color: var(--gold-bright); min-width: 46px;
-}
-.bgm-vol-hint { font-size: 12.5px; color: var(--text-3); }

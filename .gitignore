@@ -15,5 +15,3 @@ app/data/
 # 유튜브 OAuth 클라이언트/토큰 (절대 저장소에 올리지 않는다)
 app/data/youtube.json
 app/data/render-settings.json
-app/data/bgm.wav
-app/data/bgm.json
