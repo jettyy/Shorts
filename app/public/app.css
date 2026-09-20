@@ -70,6 +70,8 @@ body {
 .step.done b { background: rgba(232, 180, 74, 0.18); color: var(--gold); }
 .status { font-size: 12.5px; color: var(--text-3); white-space: nowrap; }
 .status b { color: var(--good); }
+/* 돌고 있는 코드의 버전 — 예전 서버가 켜져 있는지 한눈에 보라고 */
+.status .ver { color: var(--text-3); font-variant-numeric: tabular-nums; }
 
 .install-warn {
   max-width: 880px; margin: 22px auto -8px; padding: 18px 22px;

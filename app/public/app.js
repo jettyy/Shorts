@@ -826,9 +826,16 @@ $('#steps').addEventListener('click', (e) => {
     markTempo(state.settings);
 
     const st = await api('/api/status');
-    $('#status').innerHTML = st.claudeCli
-      ? '대본 생성 <b>자동</b> (Claude Code)'
-      : '대본 생성 <span style="color:#ffd874">수동 모드</span>';
+    /*
+     * 버전을 같이 보여준다.
+     * 고쳐서 올린 코드가 아니라 **예전 서버가 그대로 돌고 있어서** 같은 증상이
+     * 반복된 적이 있다. 화면에 버전이 없으면 알아챌 방법이 없다.
+     */
+    const ver = st.version?.label ? ` · <span class="ver">${escapeHtml(st.version.label)}</span>` : '';
+    $('#status').innerHTML =
+      (st.claudeCli
+        ? '대본 생성 <b>자동</b> (Claude Code)'
+        : '대본 생성 <span style="color:#ffd874">수동 모드</span>') + ver;
     if (!st.claudeCli) $('#manualBox').classList.remove('hidden');
 
     // 설치가 덜 됐으면 3단계에서 터지기 전에 미리 알린다
@@ -1114,12 +1121,14 @@ $('#btnYtUpload').addEventListener('click', async () => {
     es.addEventListener('error', (ev) => {
       es.close();
       let msg = '업로드에 실패했습니다.';
+      let version = '';
       try {
-        msg = JSON.parse(ev.data).message;
+        ({ message: msg, version } = JSON.parse(ev.data));
       } catch {
         msg = '업로드 중 서버와의 연결이 끊겼습니다.';
       }
-      showYtError(msg);
+      // 어느 버전에서 난 오류인지 같이 남긴다 (스크린샷 한 장으로 판별된다)
+      showYtError(version ? `${msg}\n\n[서버 버전 ${version}]` : msg);
     });
   } catch (e) {
     showYtError(e.message);

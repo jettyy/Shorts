@@ -41,6 +41,25 @@ const SOURCE_DIR = join(root, '.source');
 const PORT = Number(process.env.PORT ?? 4321);
 
 /**
+ * 지금 돌고 있는 코드의 버전 (git 커밋).
+ *
+ * **고쳐서 올렸는데 예전 서버가 그대로 돌고 있어서** 같은 증상이 반복된 적이 있다.
+ * 화면에도 오류 메시지에도 버전이 안 보이면 이걸 알아챌 방법이 없다.
+ * 그래서 시작 로그·화면 오른쪽 위·업로드 오류 상자에 버전을 같이 보여준다.
+ */
+const VERSION = (() => {
+  const git = (args) => {
+    const r = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    return r.status === 0 ? r.stdout.trim() : '';
+  };
+  const hash = git(['rev-parse', '--short', 'HEAD']);
+  if (!hash) return { hash: '?', date: '', dirty: false, label: '버전 모름' };
+  const date = git(['log', '-1', '--format=%cd', '--date=format:%m/%d %H:%M']);
+  const dirty = Boolean(git(['status', '--porcelain']));
+  return { hash, date, dirty, label: `${hash}${dirty ? '+' : ''} · ${date}` };
+})();
+
+/**
  * Remotion CLI 진입점.
  *
  * `npx remotion` 을 쓰지 않는다. npx 는 로컬에 없으면 레지스트리에서 받으려다
@@ -615,6 +634,7 @@ const routes = {
       cardCount: script?.cards?.length ?? 0,
       recordedCards: clips.length,
       browser: findBrowser() ?? 'auto',
+      version: VERSION,
     });
   },
 
@@ -1229,7 +1249,7 @@ const routes = {
       } catch (e) {
         // 원인 겹까지 통째로 남긴다 — "fetch failed" 한 줄만 남으면 나중에 알 길이 없다
         console.error('[유튜브] 실패:', e);
-        sendEvent(jobId, 'error', { message: e.message });
+        sendEvent(jobId, 'error', { message: e.message, version: VERSION.label });
       }
       endStream(jobId);
     }, 120);
@@ -1362,6 +1382,7 @@ server.listen(PORT, () => {
   console.log('');
   console.log('  🎬  쇼츠 제작 스튜디오');
   console.log(`      http://localhost:${PORT}`);
+  console.log(`      버전: ${VERSION.label}${VERSION.dirty ? ' (고친 파일 있음)' : ''}`);
   console.log('');
   const cliPath = findClaudeCli();
   console.log(`      대본 생성: ${cliPath ? 'Claude Code CLI 사용 가능' : '수동 모드 (CLI 없음)'}`);
