@@ -1220,13 +1220,15 @@ const routes = {
           meta: body.meta ?? {},
           mode: body.mode ?? 'private',
           publishAt: body.publishAt,
-          onProgress: ({ sent, total, retry }) =>
-            sendEvent(jobId, 'progress', { sent, total, retry }),
+          onProgress: ({ sent, total, retry, phase }) =>
+            sendEvent(jobId, 'progress', { sent, total, retry, phase }),
         });
-        console.log(`[유튜브] 완료 — ${result.url}`);
+        console.log(`[유튜브] 완료 — ${result.url} (${result.privacyStatus})`);
+        if (result.warning) console.warn(`[유튜브] ${result.warning.split('\n')[0]}`);
         sendEvent(jobId, 'done', result);
       } catch (e) {
-        console.error('[유튜브] 실패:', e.message);
+        // 원인 겹까지 통째로 남긴다 — "fetch failed" 한 줄만 남으면 나중에 알 길이 없다
+        console.error('[유튜브] 실패:', e);
         sendEvent(jobId, 'error', { message: e.message });
       }
       endStream(jobId);

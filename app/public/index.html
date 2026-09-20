@@ -271,6 +271,13 @@
             </div>
           </div>
 
+          <!-- 예전 권한으로 연결해둔 계정 — 올리기 전에 미리 알려준다 -->
+          <div class="yt-scope-warn hidden" id="ytScopeWarn">
+            지금 연결에는 <b>업로드 권한만</b> 있어서, 영상은 올라가지만
+            <b>예약·공개 설정은 실패합니다.</b>
+            <button class="ghost small" id="btnYtReconnect">계정 다시 연결</button>
+          </div>
+
           <div class="actions">
             <button class="primary big" id="btnYtUpload">유튜브에 올리기</button>
             <button class="ghost small" id="btnYtDisconnect">계정 연결 해제</button>

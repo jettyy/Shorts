@@ -21,19 +21,24 @@ const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const UPLOAD_URL =
   'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
+/** 올린 영상의 공개 설정을 바꾸는 주소 (예약·공개를 따로 거는 데 쓴다) */
+const VIDEOS_URL = 'https://www.googleapis.com/youtube/v3/videos?part=status';
+
 /**
  * 요청하는 권한.
  *  - youtube.upload   : 영상 업로드
- *  - youtube.readonly : **이미 예약해둔 영상들의 공개 예정 시각을 읽기 위해.**
- *    마지막 예약 뒤로 다음 예약 시각을 자동으로 잡아주는 데 쓴다.
+ *  - youtube.force-ssl: **올린 뒤에 공개 설정(예약·공개)을 거는 데 필요하다.**
+ *    영상 목록 읽기(다음 예약 시각 추천)도 이 권한에 포함된다.
  *
- * ⚠️ 권한을 늘렸으므로, 예전에 연결한 계정은 한 번 다시 연결해야 목록을 읽을 수 있다.
- *    못 읽어도 업로드는 그대로 되고, 추천 시각만 "지금 기준"으로 바뀐다.
+ * youtube.upload 만으로는 videos.update 를 부를 수 없다. 예약 발행을 업로드 본문과
+ * 분리하면서(아래 uploadOnce/applyStatus 주석 참고) 이 권한이 필요해졌다.
+ *
+ * ⚠️ 예전에 연결한 계정은 이 권한이 없다. 그때는 **영상이 비공개로 올라간 뒤**
+ *    예약만 실패한다 — 올린 건 그대로 남으니 [계정 다시 연결] 한 번이면 된다.
  */
-const SCOPE = [
-  'https://www.googleapis.com/auth/youtube.upload',
-  'https://www.googleapis.com/auth/youtube.readonly',
-].join(' ');
+const SCOPE_UPLOAD = 'https://www.googleapis.com/auth/youtube.upload';
+const SCOPE_MANAGE = 'https://www.googleapis.com/auth/youtube.force-ssl';
+const SCOPE = [SCOPE_UPLOAD, SCOPE_MANAGE].join(' ');
 
 /** 업로드 1건당 소모되는 할당량 (기본 일일 한도 10,000) */
 export const QUOTA_PER_UPLOAD = 1600;
@@ -58,6 +63,12 @@ export const createYouTube = (dataDir) => {
       connected: Boolean(s.refreshToken),
       channelTitle: s.channelTitle ?? null,
       redirectUri: s.redirectUri ?? null,
+      /*
+       * 예약·공개 설정을 걸 수 있는 권한이 있나.
+       * 예전 권한(upload + readonly)으로 연결해둔 계정은 false 다 —
+       * 업로드는 되지만 예약이 실패하므로, 올리기 전에 화면에서 미리 알려준다.
+       */
+      canSchedule: Boolean(s.refreshToken) && String(s.scopes ?? '').includes(SCOPE_MANAGE),
     };
   };
 
@@ -69,6 +80,7 @@ export const createYouTube = (dataDir) => {
     // 클라이언트가 바뀌면 기존 연결은 무효다
     delete s.refreshToken;
     delete s.channelTitle;
+    delete s.scopes;
     save(s);
   };
 
@@ -76,6 +88,7 @@ export const createYouTube = (dataDir) => {
     const s = load();
     delete s.refreshToken;
     delete s.channelTitle;
+    delete s.scopes;
     save(s);
   };
 
@@ -126,6 +139,8 @@ export const createYouTube = (dataDir) => {
       );
     }
     s.refreshToken = data.refresh_token;
+    // 실제로 승인된 권한을 적어둔다 — 예약을 걸 수 있는지 미리 알려주는 데 쓴다
+    s.scopes = data.scope ?? '';
     save(s);
     await fetchChannel(data.access_token).catch(() => {});
     return status();
@@ -140,6 +155,11 @@ export const createYouTube = (dataDir) => {
       refresh_token: s.refreshToken,
       grant_type: 'refresh_token',
     });
+    // 갱신 응답에도 권한 목록이 들어온다 — 예전에 연결한 계정도 이때 기록된다
+    if (data.scope && data.scope !== s.scopes) {
+      s.scopes = data.scope;
+      save(s);
+    }
     return data.access_token;
   };
 
@@ -187,17 +207,20 @@ export const createYouTube = (dataDir) => {
   /**
    * 기준 시각에서 3~5시간 뒤, 5분 단위로.
    *
-   * 시:분을 5분 단위로 맞추면 보기 좋지만, 반올림이 내려가면 3시간보다 짧아질 수 있다.
-   * (예: 기준 +3시간 1분 → 3시간 0분 아래로 내려감)
-   * 그래서 내려간 경우에만 5분을 더해 **최소 간격을 항상 지킨다.**
+   * 시:분을 5분 단위로 맞추면 보기 좋지만, 반올림 때문에 **양쪽 끝을 넘을 수 있다.**
+   *  - 내려가면 3시간보다 짧아진다 (예: 기준 +3시간 1분 → 3시간 0분 아래)
+   *  - 올라가면 5시간보다 길어진다 (예: 기준 +4시간 58분 → 5시간 0분 위)
+   * 그래서 넘은 쪽으로만 5분을 옮겨 **간격을 항상 3~5시간 안에 둔다.**
    */
   const randomSlotAfter = (base) => {
     const min = base.getTime() + GAP_MIN_H * 3600_000;
+    const max = base.getTime() + GAP_MAX_H * 3600_000;
     const gap = (GAP_MIN_H + Math.random() * (GAP_MAX_H - GAP_MIN_H)) * 3600_000;
     const t = new Date(base.getTime() + gap);
     t.setSeconds(0, 0);
     t.setMinutes(Math.round(t.getMinutes() / 5) * 5);
     if (t.getTime() < min) t.setMinutes(t.getMinutes() + 5);
+    if (t.getTime() > max) t.setMinutes(t.getMinutes() - 5);
     return t;
   };
 
@@ -267,8 +290,22 @@ export const createYouTube = (dataDir) => {
    * 그냥 e.message 를 보여주면 아무 단서도 안 남는다. 원인을 꺼내서 붙여준다.
    */
   const netFail = (what) => (e) => {
-    const cause = e?.cause;
-    const detail = [cause?.code, cause?.message].filter(Boolean).join(' — ');
+    /*
+     * 원인이 한 겹이 아닐 때가 있다 (fetch failed → SocketError → ECONNRESET).
+     * 겹을 끝까지 따라가서 **코드가 붙은 가장 안쪽 원인**까지 다 보여준다.
+     * 한 겹만 꺼내면 "fetch failed — other side closed" 처럼 여전히 단서가 없다.
+     */
+    const seen = new Set();
+    const layers = [];
+    for (let cur = e; cur && !seen.has(cur); cur = cur.cause) {
+      seen.add(cur);
+      // 코드와 메시지면 충분하다 (errno·syscall 은 대개 메시지 안에 이미 들어 있다)
+      const bits = [cur.code, cur.message].filter(Boolean).map(String);
+      const line = [...new Set(bits)].join(' · ');
+      if (line && !layers.includes(line)) layers.push(line);
+    }
+    const detail = layers.filter((l) => l !== 'fetch failed').join('\n      └ ');
+
     const err = new Error(
       `${what} 연결이 끊겼습니다.\n` +
         (detail ? `원인: ${detail}\n` : '') +
@@ -276,6 +313,7 @@ export const createYouTube = (dataDir) => {
         '파일이 크면 업로드 도중 끊기기도 합니다.',
     );
     err.network = true; // 재시도해볼 만한 실패라는 표시
+    err.cause = e;
     throw err;
   };
 
@@ -321,7 +359,17 @@ export const createYouTube = (dataDir) => {
       );
     }
 
-    // ④ 예약 시각이 잘못됐다
+    // ④ 예약·공개를 걸 권한이 없다 (예전 권한으로 연결해둔 계정)
+    if (reason === 'insufficientPermissions' || /insufficient (authentication|permission)/i.test(message)) {
+      return (
+        '예약·공개 설정을 걸 권한이 없는 연결입니다.\n' +
+        '예전에 연결할 때는 "업로드" 권한만 받았는데, 올린 뒤 공개 설정을 바꾸려면\n' +
+        '"계정 관리" 권한이 더 필요합니다.\n\n' +
+        '위의 [계정 다시 연결] 을 눌러 한 번만 다시 로그인하면 됩니다.'
+      );
+    }
+
+    // ⑤ 예약 시각이 잘못됐다
     if (/publishAt/i.test(message)) {
       return (
         '예약 시각을 유튜브가 거절했습니다. 앞으로의 시각인지 확인해주세요.\n' +
@@ -336,17 +384,34 @@ export const createYouTube = (dataDir) => {
    * 영상 업로드.
    * mode: 'public' | 'private' | 'schedule'
    * publishAt: schedule 일 때 ISO 8601 문자열
+   *
+   * ⚠️ **공개 설정은 본문 업로드와 같은 요청에 싣지 않는다.**
+   *
+   * 예전에는 업로드를 시작할 때 privacyStatus/publishAt 을 같이 보냈다. 그러면
+   * 공개·예약이 거절될 때 **수십 MB 를 다 보낸 업로드가 통째로 날아간다**
+   * (할당량 1600 units 도 같이 날아간다). 실제로 비공개는 올라가는데 공개·예약만
+   * "fetch failed" 로 죽는 일이 있었고, 그 한 줄로는 원인을 알 수도 없었다.
+   *
+   * 그래서 **본문은 언제나 비공개로 올리고**(되는 게 확인된 경로),
+   * 공개·예약은 끝나고 나서 작은 요청 하나(videos.update, 50 units)로 건다.
+   *  - 설정이 실패해도 영상은 이미 올라가 있다 → 스튜디오에서 마저 하면 된다
+   *  - 작은 JSON 요청이라 실패해도 유튜브가 이유를 제대로 돌려준다
+   *  - 50 units 뿐이라 마음 놓고 다시 시도할 수 있다
    */
   /** 업로드 재시도 횟수 — 끊김은 흔하고, 5MB 남짓이라 처음부터 다시 보내도 부담이 적다 */
   const UPLOAD_TRIES = 3;
+  /** 공개 설정 재시도 — 50 units 라 부담이 없다 */
+  const STATUS_TRIES = 3;
 
   const upload = async ({ filePath, meta, mode, publishAt, onProgress }) => {
     if (!existsSync(filePath)) throw new Error('업로드할 영상 파일이 없습니다.');
 
+    let uploaded;
     let lastError;
     for (let attempt = 1; attempt <= UPLOAD_TRIES; attempt++) {
       try {
-        return await uploadOnce({ filePath, meta, mode, publishAt, onProgress, attempt });
+        uploaded = await uploadOnce({ filePath, meta, onProgress, attempt });
+        break;
       } catch (e) {
         lastError = e;
         /*
@@ -360,15 +425,83 @@ export const createYouTube = (dataDir) => {
         await new Promise((r) => setTimeout(r, attempt * 2000));
       }
     }
+    if (!uploaded) throw lastError;
+
+    if (mode !== 'public' && mode !== 'schedule') return uploaded;
+
+    // 본문은 올라갔다. 이제 공개·예약만 따로 건다 — 여기서 실패해도 영상은 남는다.
+    onProgress?.({ sent: 0, total: 0, phase: mode === 'schedule' ? 'schedule' : 'publish' });
+    try {
+      const st = await applyStatus({ videoId: uploaded.id, mode, publishAt });
+      return {
+        ...uploaded,
+        privacyStatus: st.privacyStatus ?? uploaded.privacyStatus,
+        publishAt: st.publishAt ?? null,
+      };
+    } catch (e) {
+      console.error('[유튜브] 공개 설정 실패:', e.message);
+      return {
+        ...uploaded,
+        warning:
+          (mode === 'schedule' ? '영상은 올라갔지만 예약을 걸지 못했습니다.' : '영상은 올라갔지만 공개로 바꾸지 못했습니다.') +
+          '\n지금은 비공개로 올라가 있습니다 — 아래 [스튜디오에서 수정] 에서 직접 바꿀 수 있습니다.\n\n' +
+          e.message,
+      };
+    }
+  };
+
+  /**
+   * 올라간 영상의 공개 설정을 건다 (videos.update, 50 units).
+   *
+   * videos.update 는 보낸 part 를 **통째로 덮어쓴다.** status 를 보낼 때 빠뜨린 항목은
+   * 기본값으로 되돌아가므로, 올릴 때 정한 값들을 다시 다 적어 보낸다.
+   */
+  const applyStatus = async ({ videoId, mode, publishAt }) => {
+    const body = {
+      id: videoId,
+      status: {
+        // 예약은 "비공개 + publishAt" 이어야 한다. 공개는 그대로 public.
+        privacyStatus: mode === 'public' ? 'public' : 'private',
+        selfDeclaredMadeForKids: false,
+        ...(mode === 'schedule' && publishAt ? { publishAt } : {}),
+      },
+    };
+
+    let lastError;
+    for (let attempt = 1; attempt <= STATUS_TRIES; attempt++) {
+      try {
+        const token = await accessToken();
+        const res = await fetch(VIDEOS_URL, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json; charset=UTF-8',
+          },
+          body: JSON.stringify(body),
+        }).catch(netFail(mode === 'schedule' ? '예약을 거는 중' : '공개로 바꾸는 중'));
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const err = new Error(explain(data, res.status));
+          err.reason = data.error?.errors?.[0]?.reason ?? '';
+          throw err; // network 표시가 없으니 아래에서 바로 포기한다
+        }
+        return data.status ?? {};
+      } catch (e) {
+        lastError = e;
+        if (!e.network || attempt === STATUS_TRIES) throw e;
+        await new Promise((r) => setTimeout(r, attempt * 1000));
+      }
+    }
     throw lastError;
   };
 
-  const uploadOnce = async ({ filePath, meta, mode, publishAt, onProgress }) => {
+  const uploadOnce = async ({ filePath, meta, onProgress }) => {
     const token = await accessToken();
     const size = statSync(filePath).size;
 
-    // 예약 발행은 반드시 비공개 상태로 올려야 한다
-    const privacyStatus = mode === 'public' ? 'public' : 'private';
+    // 본문은 **항상** 비공개로 올린다 (공개·예약은 올린 뒤에 따로 건다)
+    const privacyStatus = 'private';
     const body = {
       snippet: {
         title: (meta.title ?? '제목 없음').slice(0, 100),
@@ -379,7 +512,6 @@ export const createYouTube = (dataDir) => {
       status: {
         privacyStatus,
         selfDeclaredMadeForKids: false,
-        ...(mode === 'schedule' && publishAt ? { publishAt } : {}),
       },
     };
 

@@ -30,6 +30,8 @@ const cases = [
   ['채널 없음', { error: { code: 403, message: 'Unauthorized', errors: [{ reason: 'youtubeSignupRequired' }] } }],
   ['할당량 소진', { error: { code: 403, message: 'quota', errors: [{ reason: 'quotaExceeded' }] } }],
   ['예약 시각 거절', { error: { code: 400, message: 'The publishAt time must be in the future.', errors: [{ reason: 'invalidPublishAt' }] } }],
+  // 예전 권한(업로드만)으로 연결해둔 계정이 예약을 걸려고 할 때
+  ['예약 권한 없음', { error: { code: 403, message: 'Request had insufficient authentication scopes.', errors: [{ reason: 'insufficientPermissions' }] } }],
 ];
 
 globalThis.fetch = async (url) => {
