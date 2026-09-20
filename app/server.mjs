@@ -28,6 +28,7 @@ import { buildPrompt } from './prompt.mjs';
 import { withPublishCopy } from './publish-copy.mjs';
 import { createYouTube } from './youtube.mjs';
 import { loadStyle } from './style-config.mjs';
+import { bgmFilter, voicedWindows } from './audio-mix.mjs';
 import { findBrowser } from '../scripts/find-browser.mjs';
 import { setupFonts } from '../scripts/setup-fonts.mjs';
 
@@ -502,6 +503,8 @@ const buildAudio = async () => {
   const meta = readMeta();
   let metaDirty = false;
   const parts = [];
+  const segments = [];
+  let at = 0;
   let recorded = 0;
 
   for (let i = 0; i < script.cards.length; i++) {
@@ -540,6 +543,9 @@ const buildAudio = async () => {
     }
 
     script.cards[i].durationSec = dur;
+    // 배경음악을 낮출 구간을 모아둔다 (녹음이 있는 카드 = 목소리가 나오는 구간)
+    segments.push({ start: at, end: at + dur, voiced: existsSync(clip) });
+    at += dur;
     parts.push(padded);
   }
 
@@ -557,12 +563,41 @@ const buildAudio = async () => {
   const listFile = join(CLIPS_DIR, 'concat.txt');
   writeFileSync(listFile, parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
   const outMp3 = join(AUDIO_DIR, 'narration.mp3');
-  await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-b:a', '160k', outMp3]);
+  const voiceOnly = join(CLIPS_DIR, 'voice.wav');
+  await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, voiceOnly]);
+
+  // 배경음악을 켜뒀으면 여기서 섞는다 (안 켰으면 목소리 그대로)
+  const mixed = await mixBgm(voiceOnly, totalSec, voicedWindows(segments));
+  await runFfmpeg(['-y', '-i', mixed, '-b:a', '160k', outMp3]);
 
   script.narrationAudio = 'audio/narration.mp3';
   saveScript(script);
 
   return { recorded, totalSec, speed, gapSec, url: `/audio/narration.mp3?t=${Date.now()}` };
+};
+
+const mixBgm = async (voiceFile, totalSec, windows) => {
+  const { bgm } = loadStyle().audio;
+  if (!bgm.enabled || !bgm.track) return voiceFile;
+
+  const track = join(AUDIO_DIR, bgm.track);
+  if (!existsSync(track)) {
+    console.warn(`[배경음악] ${bgm.track} 을 찾지 못해 목소리만 씁니다 (public/audio/ 에 넣어주세요)`);
+    return voiceFile;
+  }
+
+  const out = join(CLIPS_DIR, 'mixed.wav');
+  await runFfmpeg([
+    '-y',
+    '-i', voiceFile,
+    '-stream_loop', '-1', '-i', track,
+    '-filter_complex', bgmFilter(bgm, windows),
+    '-map', '[out]',
+    '-t', String(totalSec),
+    '-ar', '48000', '-ac', '1',
+    out,
+  ]);
+  return out;
 };
 
 /* ── 진행 상황 스트림 (SSE) ──────────────────────────────── */

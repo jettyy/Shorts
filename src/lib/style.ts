@@ -59,10 +59,8 @@ export type StyleConfig = {
       track: string;
       /** 배경음악 기본 음량(dB). 0 이 원본 */
       gainDb: number;
-      /** 목소리가 나올 때 더 줄일 양(dB) */
+      /** 목소리가 나오는 동안 배경음악을 더 낮출 양(dB) */
       duckDb: number;
-      duckAttackMs: number;
-      duckReleaseMs: number;
     };
   };
 };
@@ -82,9 +80,7 @@ export const STYLE_DEFAULTS: StyleConfig = {
       enabled: false,
       track: '',
       gainDb: -20,
-      duckDb: -8,
-      duckAttackMs: 20,
-      duckReleaseMs: 350,
+      duckDb: -9,
     },
   },
 };

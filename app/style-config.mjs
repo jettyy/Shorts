@@ -29,9 +29,7 @@ export const STYLE_DEFAULTS = {
       enabled: false,
       track: '',
       gainDb: -20,
-      duckDb: -8,
-      duckAttackMs: 20,
-      duckReleaseMs: 350,
+      duckDb: -9,
     },
   },
 };
