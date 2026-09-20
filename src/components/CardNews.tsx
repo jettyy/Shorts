@@ -59,6 +59,7 @@ export const CardNews: React.FC<CardNewsProps> = ({ script }) => {
               total={cards.length}
               accent={accent}
               source={script.source}
+              isFirst={i === 0}
             />
           </Sequence>
         );
