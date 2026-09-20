@@ -44,7 +44,15 @@ export const buildPublishCopy = (script) => {
   const conclusion = cards[cards.length - 1];
   const topic = clean(script.topic) || oneLine(hook);
 
-  const title = oneLine(hook).slice(0, 60) || topic;
+  /**
+   * 제목은 "주제 + 후킹 문장" 이 가장 잘 눌린다.
+   * 1번 카드의 headline 이 곧 주제(예: "공기업 평균연봉 TOP 16")라서 앞에 세운다.
+   * headline 이 없는 옛 대본은 예전처럼 훅 제목만 쓴다.
+   */
+  const banner = clean(hook?.headline);
+  const hookLine = oneLine(hook);
+  const title = (banner && hookLine ? `${banner} | ${hookLine}` : banner || hookLine).slice(0, 60)
+    || topic;
   const lead = clean(hook?.narration) || title;
 
   const tags = [...topicTags(script), '정보', '꿀팁', '쇼츠'];

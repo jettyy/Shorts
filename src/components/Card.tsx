@@ -1,7 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 import { BASE, FONT_FAMILY, LAYOUT, TYPE, TYPE_LABEL, type Accent } from '../theme';
-import { fitFontSize, wrapTitle } from '../lib/text';
+import { fitBannerSize, fitFontSize, wrapTitle } from '../lib/text';
 import { VisualBlock } from './visuals';
 import { InstantContext } from './visuals/useReveal';
 import type { Card as CardData, SourceInfo } from '../types';
@@ -79,6 +79,13 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
     ? 1
     : interpolate(frame, [3, 16], [0, 1], { extrapolateRight: 'clamp' });
   const kicker = card.kicker ?? TYPE_LABEL[card.type] ?? '';
+
+  // ── 주제 배너 ───────────────────────────────────────────
+  // 좌우 여백(배너 padding 26×2)을 빼고 한 줄에 들어갈 크기를 잡는다.
+  const headlineSize = card.headline ? fitBannerSize(card.headline) : 0;
+  const headlineIn = isFirst
+    ? 1
+    : interpolate(frame, [2, 14], [0, 1], { extrapolateRight: 'clamp' });
 
   return (
     <InstantContext.Provider value={Boolean(isFirst)}>
@@ -175,6 +182,35 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
               flex: 1,
             }}
           >
+            {/*
+              주제 배너 — "이게 무슨 영상인지" 를 첫 화면에서 바로 알려준다.
+              쇼츠는 무슨 내용인지 모르면 바로 넘어가므로, 제목 위에 accent 색으로 크게 박는다.
+              첫 프레임이 썸네일로 잡히는 자리라서 여기서 주제가 읽혀야 한다.
+            */}
+            {card.headline ? (
+              <div
+                style={{
+                  alignSelf: 'flex-start',
+                  maxWidth: '100%',
+                  marginBottom: 26,
+                  padding: '14px 26px',
+                  borderRadius: 16,
+                  background: accent.primary,
+                  color: BASE.navyDeepest,
+                  fontSize: headlineSize,
+                  fontWeight: 900,
+                  letterSpacing: '-0.035em',
+                  lineHeight: 1.18,
+                  wordBreak: 'keep-all',
+                  boxShadow: `0 10px 34px ${accent.glow}`,
+                  opacity: headlineIn,
+                  transform: `translateY(${(1 - headlineIn) * 18}px)`,
+                }}
+              >
+                {card.headline}
+              </div>
+            ) : null}
+
             <div>
               {lines.map((line, i) => {
                 const lineIn = isFirst

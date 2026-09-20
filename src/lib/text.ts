@@ -54,6 +54,21 @@ export const wrapTitle = (title: string, maxEm = 15): string[] => {
 };
 
 /**
+ * 주제 배너(`card.headline`)의 글자 크기.
+ *
+ * 배너는 **한 줄로** 끝나야 라벨처럼 읽힌다. 두 줄로 접히면 제목과 구분이 안 된다.
+ * 그래서 폭에 맞춰 크기를 줄이되, 너무 작아지면 배너 구실을 못하므로 하한을 둔다.
+ * (하한에 걸릴 만큼 길면 대본에서 주제를 줄여야 한다 — `npm run check` 가 알려준다)
+ */
+export const BANNER = { max: 56, min: 34, paddingX: 26 } as const;
+
+export const fitBannerSize = (text: string): number => {
+  const inner = CONTENT_WIDTH - BANNER.paddingX * 2;
+  const byWidth = inner / Math.max(measureEm(text), 1);
+  return Math.max(BANNER.min, Math.min(BANNER.max, byWidth));
+};
+
+/**
  * 줄 목록이 가로 폭 안에 들어오도록 폰트 크기를 계산한다.
  * 줄 수가 많아질수록 살짝 더 줄여서 세로로도 안정적으로 앉게 한다.
  */

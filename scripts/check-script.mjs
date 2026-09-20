@@ -104,17 +104,25 @@ const VISUAL_SHAPE = {
   flow: { key: 'nodes', per: 118, gap: 53, font: 46, head: 0 },
 };
 
-const maxItemsFor = ({ per, gap, font, head }) => {
+const maxItemsFor = ({ per, gap, font, head }, budget = VISUAL_BUDGET) => {
   const minScale = Math.min(1, MIN_FONT / font);
-  const room = VISUAL_BUDGET / minScale - head;
+  const room = budget / minScale - head;
   return Math.max(1, Math.floor((room + gap) / (per + gap)));
 };
+
+/**
+ * 주제 배너(headline)가 차지하는 높이.
+ * 배너 글자(최대 56) × 줄높이 1.18 + 위아래 padding 28 + 아래 여백 26.
+ */
+const HEADLINE_H = Math.round(56 * 1.18) + 28 + 26;
 
 cards.forEach((card, i) => {
   const shape = VISUAL_SHAPE[card.visual?.kind];
   if (!shape) return;
   const count = (card.visual[shape.key] ?? []).length;
-  const max = maxItemsFor(shape);
+  // 배너가 있는 카드는 도표가 쓸 공간이 그만큼 줄어든다
+  const budget = VISUAL_BUDGET - (card.headline ? HEADLINE_H : 0);
+  const max = maxItemsFor(shape, budget);
   if (count > max) {
     const parts = Math.ceil(count / max);
     notes.push(
@@ -128,6 +136,33 @@ cards.forEach((card, i) => {
 if (cards[0] && cards[0].type !== 'hook') {
   errors.push('1번 카드의 type 은 "hook" 이어야 합니다.');
 }
+
+/* ── 주제 배너(headline) ──────────────────────────────────
+ *
+ * 첫 화면에서 "이게 무슨 영상인지" 가 안 보이면 그냥 넘어간다.
+ * 첫 프레임은 썸네일로도 쓰이므로 여기서 주제가 읽혀야 한다.
+ */
+const BANNER_MAX_EM = 20; // 이보다 길면 배너가 두 줄로 접혀 제목처럼 안 보인다
+if (cards[0]) {
+  const headline = cards[0].headline?.trim();
+  if (!headline) {
+    notes.push(
+      '1번 카드에 headline(주제 배너)이 없습니다. ' +
+        '첫 화면에서 "무슨 영상인지"가 안 보이면 그냥 넘어갑니다. ' +
+        '"한국 부자 TOP 20" 처럼 주제와 범위가 다 들어간 한 줄을 넣으세요.',
+    );
+  } else if (emWidth(headline) > BANNER_MAX_EM) {
+    notes.push(
+      `1번 카드의 headline 이 깁니다("${headline}"). ` +
+        '배너가 두 줄로 접혀서 제목처럼 안 보입니다. 20자 안쪽으로 줄이세요.',
+    );
+  }
+}
+cards.slice(1).forEach((card, i) => {
+  if (card.headline) {
+    notes.push(`${i + 2}번 카드의 headline 은 그려지지 않습니다. 주제 배너는 1번 카드 전용입니다.`);
+  }
+});
 const last = cards[cards.length - 1];
 if (last && last.type !== 'conclusion') {
   errors.push('마지막 카드의 type 은 "conclusion"(제작자의 결론) 이어야 합니다.');

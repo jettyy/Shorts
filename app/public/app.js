@@ -226,6 +226,14 @@ function renderScript() {
           <button class="ghost small btn-preview" data-i="${i}">미리보기</button>
         </div>
         <div class="card-body">
+          ${
+            i === 0
+              ? `<label>주제 배너 — 이게 무슨 영상인지 (첫 화면·썸네일에 크게 박힙니다)
+            <input data-field="headline" data-i="${i}" maxlength="24"
+              placeholder="예: 한국 부자 TOP 20" value="${escapeHtml(c.headline ?? '')}" />
+          </label>`
+              : ''
+          }
           <label>화면 제목 (줄바꿈으로 줄 나눔, 최대 3줄)
             <textarea class="card-title-input" rows="2" data-field="title" data-i="${i}">${escapeHtml(c.title ?? '')}</textarea>
           </label>
