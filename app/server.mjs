@@ -22,13 +22,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './prompt.mjs';
 import { withPublishCopy } from './publish-copy.mjs';
 import { createYouTube } from './youtube.mjs';
 import { loadStyle } from './style-config.mjs';
 import { bgmFilter, voicedWindows } from './audio-mix.mjs';
+import { listTracks, pickRandom, resolveTrack } from './bgm.mjs';
 import { findBrowser } from '../scripts/find-browser.mjs';
 import { setupFonts } from '../scripts/setup-fonts.mjs';
 import { ensureScript } from '../scripts/ensure-script.mjs';
@@ -449,24 +450,54 @@ const SETTINGS_PATH = join(root, 'app', 'data', 'render-settings.json');
 
 /** 목소리가 자연스럽고 도표도 읽히는 범위만 허용한다. 2배속은 넣지 않는다. */
 const ALLOWED_SPEEDS = [1, 1.1, 1.25];
-const DEFAULT_SETTINGS = { speed: 1, gapSec: 0.4 };
 
+/**
+ * 배경음악 음량 단계.
+ * dB 숫자를 직접 고르게 하면 감이 안 온다. 말을 가리지 않는 범위에서 세 단계만 준다.
+ */
+const BGM_LEVELS = {
+  quiet: { gainDb: -26, label: '아주 작게' },
+  normal: { gainDb: -20, label: '보통' },
+  loud: { gainDb: -15, label: '조금 크게' },
+};
+const DEFAULT_SETTINGS = { speed: 1, gapSec: 0.4, bgmTrack: '', bgmLevel: 'normal' };
+
+/**
+ * 이 작업의 설정. `app/data/` 에만 저장한다(git 제외).
+ *
+ * ⚠️ **`config/style.json` 에 쓰지 않는다.** 그 파일은 저장소에 추적되는 기본값이라,
+ *    앱이 덮어쓰기 시작하면 `git pull` 이 다시 막힌다 — `src/script.json` 으로 이미 겪었다.
+ *    설정 파일은 "기본값", 여기는 "지금 이 작업에서 고른 값"이다.
+ */
 const loadSettings = () => {
+  const base = { ...DEFAULT_SETTINGS, speed: loadStyle().audio.speed, gapSec: loadStyle().audio.gapSec };
+  let s = {};
   try {
-    const s = JSON.parse(readFileSync(SETTINGS_PATH, 'utf8'));
-    return {
-      speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : DEFAULT_SETTINGS.speed,
-      gapSec: Math.min(Math.max(Number(s.gapSec) || DEFAULT_SETTINGS.gapSec, 0.15), 0.8),
-    };
+    s = JSON.parse(readFileSync(SETTINGS_PATH, 'utf8'));
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return base;
   }
+  return {
+    speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : base.speed,
+    gapSec: Math.min(Math.max(Number(s.gapSec) || base.gapSec, 0.15), 0.8),
+    // 고른 곡이 지워졌을 수도 있다 — 실제로 있는 파일일 때만 쓴다
+    bgmTrack: resolveTrack(s.bgmTrack) ? basename(String(s.bgmTrack)) : '',
+    bgmLevel: s.bgmLevel in BGM_LEVELS ? s.bgmLevel : DEFAULT_SETTINGS.bgmLevel,
+  };
 };
 
 const saveSettings = (s) => {
+  const cur = loadSettings();
   const next = {
-    speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : DEFAULT_SETTINGS.speed,
-    gapSec: Math.min(Math.max(Number(s.gapSec) || DEFAULT_SETTINGS.gapSec, 0.15), 0.8),
+    speed: ALLOWED_SPEEDS.includes(Number(s.speed)) ? Number(s.speed) : cur.speed,
+    gapSec: Math.min(Math.max(Number(s.gapSec) || cur.gapSec, 0.15), 0.8),
+    bgmTrack:
+      s.bgmTrack === undefined
+        ? cur.bgmTrack
+        : resolveTrack(s.bgmTrack)
+          ? basename(String(s.bgmTrack))
+          : '', // 빈 값 = 배경음악 없음
+    bgmLevel: s.bgmLevel in BGM_LEVELS ? s.bgmLevel : cur.bgmLevel,
   };
   writeFileSync(SETTINGS_PATH, JSON.stringify(next, null, 2), 'utf8');
   return next;
@@ -555,8 +586,12 @@ const buildAudio = async () => {
 
   const totalSec = toTenth(script.cards.reduce((a, c) => a + c.durationSec, 0));
 
-  if (recorded === 0) {
-    // 녹음이 하나도 없으면 무음 트랙을 붙이지 않는다
+  /*
+   * 녹음이 하나도 없으면 원래는 소리 트랙을 안 붙였다.
+   * 하지만 **배경음악만 깔고 싶을 때**가 있다(녹음 전에 음악을 먼저 들어보는 경우 포함).
+   * 그래서 고른 곡이 있으면 무음 위에 음악만 얹어서 트랙을 만든다.
+   */
+  if (recorded === 0 && !loadSettings().bgmTrack) {
     delete script.narrationAudio;
     saveScript(script);
     return { recorded: 0, totalSec, speed, gapSec, url: null };
@@ -580,20 +615,31 @@ const buildAudio = async () => {
 
 const mixBgm = async (voiceFile, totalSec, windows) => {
   const { bgm } = loadStyle().audio;
-  if (!bgm.enabled || !bgm.track) return voiceFile;
+  const { bgmTrack, bgmLevel } = loadSettings();
 
-  const track = join(AUDIO_DIR, bgm.track);
-  if (!existsSync(track)) {
-    console.warn(`[배경음악] ${bgm.track} 을 찾지 못해 목소리만 씁니다 (public/audio/ 에 넣어주세요)`);
+  /*
+   * 4단계에서 고른 곡이 우선이다. 아무것도 안 골랐으면 설정 파일의 기본값을 본다.
+   * 둘 다 없으면 배경음악 없이 목소리만 — 그게 기본 동작이다.
+   */
+  const chosen = bgmTrack || (bgm.enabled ? bgm.track : '');
+  if (!chosen) return voiceFile;
+
+  const track = resolveTrack(chosen);
+  if (!track) {
+    console.warn(`[배경음악] "${chosen}" 을 찾지 못해 목소리만 씁니다 (public/bgm/ 에 넣어주세요)`);
     return voiceFile;
   }
+
+  // 화면에서 고른 음량 단계가 있으면 그걸 쓴다
+  const gainDb = bgmTrack ? (BGM_LEVELS[bgmLevel] ?? BGM_LEVELS.normal).gainDb : bgm.gainDb;
+  console.log(`[배경음악] ${basename(track)} (${gainDb}dB, 말할 때 ${bgm.duckDb}dB 더 낮춤)`);
 
   const out = join(CLIPS_DIR, 'mixed.wav');
   await runFfmpeg([
     '-y',
     '-i', voiceFile,
     '-stream_loop', '-1', '-i', track,
-    '-filter_complex', bgmFilter(bgm, windows),
+    '-filter_complex', bgmFilter({ ...bgm, gainDb }, windows),
     '-map', '[out]',
     '-t', String(totalSec),
     '-ar', '48000', '-ac', '1',
@@ -1032,6 +1078,36 @@ const routes = {
   },
 
   /* ── 렌더 설정 ──────────────────────────────────────── */
+
+  /**
+   * 쓸 수 있는 배경음악 목록.
+   * 길이를 재는 데 시간이 걸려서 캐시한다(app/data/bgm-meta.json).
+   */
+  'GET /api/bgm': async (req, res) => {
+    const tracks = await listTracks(probeDuration).catch(() => []);
+    const { bgmTrack, bgmLevel } = loadSettings();
+    json(res, 200, {
+      tracks,
+      selected: bgmTrack,
+      level: bgmLevel,
+      levels: Object.entries(BGM_LEVELS).map(([key, v]) => ({ key, label: v.label })),
+    });
+  },
+
+  /** 고르기 전에 들어보는 용도. Range 를 지원해야 사파리에서 재생된다. */
+  'GET /api/bgm/file': async (req, res, url) => {
+    const track = resolveTrack(url.searchParams.get('name'));
+    if (!track) return json(res, 404, { error: '음원을 찾지 못했습니다.' });
+    serveFile(res, track, false, req);
+  },
+
+  /** 무작위로 하나 고른다 — 영상마다 다른 곡이 깔리게 */
+  'POST /api/bgm/random': async (req, res) => {
+    const tracks = await listTracks().catch(() => []);
+    if (!tracks.length) return json(res, 400, { error: '쓸 수 있는 음원이 없습니다.' });
+    const { bgmTrack } = loadSettings();
+    json(res, 200, saveSettings({ bgmTrack: pickRandom(tracks, bgmTrack) }));
+  },
 
   'GET /api/settings': async (req, res) => {
     json(res, 200, { ...loadSettings(), allowedSpeeds: ALLOWED_SPEEDS });

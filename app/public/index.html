@@ -150,6 +150,24 @@
       </div>
     </div>
 
+    <!-- ── 배경음악 ── -->
+    <div class="tempo bgm">
+      <div class="tempo-row">
+        <span class="tempo-label">배경음악</span>
+        <select id="bgmTrack"><option value="">불러오는 중…</option></select>
+        <button class="ghost small" id="btnBgmPlay" title="들어보기">▶︎ 들어보기</button>
+        <button class="ghost small" id="btnBgmRandom" title="무작위로 하나 고르기">🎲 무작위</button>
+      </div>
+      <div class="tempo-row" id="bgmLevelRow">
+        <span class="tempo-label">음악 음량</span>
+        <div class="seg" id="bgmLevelSeg"></div>
+      </div>
+      <audio id="bgmPreview" preload="none"></audio>
+      <div class="tempo-note" id="bgmNote">
+        말하는 동안에는 음악이 자동으로 낮아집니다. 곡이 짧으면 이어 붙이고, 길면 잘라냅니다.
+      </div>
+    </div>
+
     <div class="preview-audio hidden" id="audioPreview">
       <h3>합쳐진 내레이션 미리듣기</h3>
       <audio id="fullAudio" controls></audio>

@@ -13,12 +13,13 @@
  *    volumedetect·astats·highpass 가 없어서 음량은 `loudnorm` 1차 패스로 잰다
  *    (server.mjs 의 measureLoudness 와 같은 방식).
  */
-import { mkdtempSync, readdirSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { bgmFilter, voicedWindows } from '../app/audio-mix.mjs';
+import { listTracks, pickRandom, resolveTrack } from '../app/bgm.mjs';
 import { STYLE_DEFAULTS } from '../app/style-config.mjs';
 
 const root = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'));
@@ -127,7 +128,54 @@ check(
 /* ── 기본값 ────────────────────────────────────────────── */
 console.log('\n기본값');
 check(bgm.enabled === false, '배경음악은 기본으로 꺼져 있다');
-check(bgm.track === '', '기본 음원이 지정돼 있지 않다 (저장소에 음원을 넣지 않는다)');
+check(bgm.track === '', '설정 파일에 기본 음원이 박혀 있지 않다 (화면에서 고른다)');
+
+/* ── 음원 목록 · 경로 안전 ─────────────────────────────
+ *
+ * 곡 이름이 URL 로 오가기 때문에, 그대로 경로에 붙이면 저장소 밖 파일을 읽게 된다.
+ * 실제 사용자 음원 이름에 공백·따옴표가 들어 있어서 그것도 같이 본다.
+ */
+const bgmDir = join(root, 'public', 'bgm');
+const samples = ["Joey's Formal Waltz - Unscented.mp3", 'Space Jazz.mp3', '설명.txt'];
+mkdirSync(bgmDir, { recursive: true });
+for (const f of samples) writeFileSync(join(bgmDir, f), 'x');
+
+console.log('\n음원 목록');
+// 폴더에 이미 음원이 있을 수 있으니, 이번에 넣은 것만 놓고 본다
+const tracks = await listTracks();
+const files = tracks.map((t) => t.file);
+check(
+  files.includes("Joey's Formal Waltz - Unscented.mp3"),
+  '따옴표가 들어간 이름도 목록에 나온다',
+);
+check(files.includes('Space Jazz.mp3'), '보통 이름도 목록에 나온다');
+check(!files.includes('설명.txt'), '소리 파일이 아닌 건 빼고 센다');
+check(
+  tracks.find((t) => t.file === 'Space Jazz.mp3')?.name === 'Space Jazz',
+  '확장자를 뗀 이름을 같이 준다',
+);
+check(new Set(files).size === files.length, '같은 이름이 두 번 나오지 않는다');
+
+console.log('\n저장소 밖 파일은 읽지 못한다');
+for (const bad of ['../../package.json', '../package.json', '/etc/passwd', '..', '']) {
+  check(resolveTrack(bad) === null, `막는다 — ${JSON.stringify(bad)}`);
+}
+check(resolveTrack('없는곡.mp3') === null, '목록에 없는 이름은 막는다');
+check(resolveTrack('Space Jazz.mp3') !== null, '목록에 있는 곡은 찾는다');
+
+console.log('\n무작위 고르기');
+const two = tracks.filter((t) => samples.includes(t.file));
+check(
+  pickRandom(two, 'Space Jazz.mp3') === "Joey's Formal Waltz - Unscented.mp3",
+  '지금 곡은 빼고 고른다 (같은 곡이 이어지지 않게)',
+);
+check(
+  pickRandom([two[0]], two[0].file) === two[0].file,
+  '곡이 하나뿐이면 그 곡을 그대로 쓴다 (빈 값이 되면 안 된다)',
+);
+check(pickRandom([]) === '', '곡이 아예 없으면 빈 값을 준다');
+
+for (const f of samples) rmSync(join(bgmDir, f), { force: true });
 
 console.log(failed ? `\n❌ ${failed}개 실패\n` : '\n✅ 전부 통과\n');
 process.exit(failed ? 1 : 0);

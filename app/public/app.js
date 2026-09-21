@@ -613,6 +613,7 @@ function renderFinal(build) {
    * 일단 싹 지우고, "지금 대본으로 만든 영상"이 있을 때만 다시 연다.
    */
   clearOutputUI();
+  loadBgm();
   api('/api/videos')
     .then(({ latest, current }) => {
       // current=false 면 output 폴더에 남은 지난 영상이다. 그걸로 문구를 열면 안 된다.
@@ -1310,3 +1311,135 @@ $('#gapSeg').addEventListener('click', (e) => {
   if (!btn || btn.disabled) return;
   applyTempo({ ...state.settings, gapSec: Number(btn.dataset.gap) });
 });
+
+/* ── 배경음악 ────────────────────────────────────────── */
+
+/**
+ * 쓸 수 있는 음원 목록을 채운다.
+ *
+ * 음원은 `public/bgm/` 에 둔다. `public/audio/` 에 두면 안 된다 —
+ * 거기는 합친 내레이션이 들어가는 작업 폴더라 [전부 지우고 처음부터] 로 비워진다.
+ */
+async function loadBgm() {
+  const sel = $('#bgmTrack');
+  const note = $('#bgmNote');
+  try {
+    const { tracks, selected, level, levels } = await api('/api/bgm');
+
+    sel.innerHTML =
+      `<option value="">배경음악 없음 (목소리만)</option>` +
+      tracks
+        .map(
+          (t) =>
+            `<option value="${escapeHtml(t.file)}"${t.file === selected ? ' selected' : ''}>` +
+            `${escapeHtml(t.name)}${t.duration ? ` · ${fmtClock(t.duration)}` : ''}</option>`,
+        )
+        .join('');
+
+    // 음량 단계 버튼은 서버가 주는 목록으로 만든다 (두 곳에 같은 값을 적어두지 않으려고)
+    $('#bgmLevelSeg').innerHTML = levels
+      .map(
+        (l) =>
+          `<button data-level="${escapeHtml(l.key)}"${l.key === level ? ' class="on"' : ''}>` +
+          `${escapeHtml(l.label)}</button>`,
+      )
+      .join('');
+
+    state.bgm = { tracks, selected, level };
+    syncBgmUI();
+
+    if (!tracks.length) {
+      note.className = 'tempo-note warn';
+      note.innerHTML =
+        '쓸 수 있는 음원이 없습니다. 저작권 없는 mp3 를 <code>public/bgm/</code> 폴더에 넣어주세요.<br>' +
+        '<b>public/audio/ 에는 넣지 마세요</b> — [전부 지우고 처음부터] 를 누르면 지워지는 작업 폴더입니다.';
+    }
+  } catch (e) {
+    note.className = 'tempo-note warn';
+    note.textContent = `음원 목록을 불러오지 못했습니다 (${e.message})`;
+  }
+}
+
+/** 초 → 0:00 */
+const fmtClock = (sec) => {
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+/** 곡을 안 골랐으면 음량 줄과 들어보기는 의미가 없다 */
+function syncBgmUI() {
+  const chosen = Boolean($('#bgmTrack').value);
+  $('#bgmLevelRow').classList.toggle('hidden', !chosen);
+  $('#btnBgmPlay').disabled = !chosen;
+}
+
+/** 고른 곡을 저장한다. 소리는 렌더할 때 합치므로 내레이션을 다시 만들 필요는 없다. */
+async function saveBgm(next) {
+  try {
+    const s = await api('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...state.settings, ...next }),
+    });
+    state.settings = s;
+    if (next.bgmTrack !== undefined) $('#bgmTrack').value = s.bgmTrack;
+    $$('#bgmLevelSeg button').forEach((b) => b.classList.toggle('on', b.dataset.level === s.bgmLevel));
+    syncBgmUI();
+    stopBgmPreview();
+    return s;
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+$('#bgmTrack').addEventListener('change', (e) => saveBgm({ bgmTrack: e.target.value }));
+
+$('#bgmLevelSeg').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  saveBgm({ bgmLevel: btn.dataset.level });
+});
+
+$('#btnBgmRandom').addEventListener('click', async () => {
+  try {
+    const s = await api('/api/bgm/random', { method: 'POST' });
+    state.settings = s;
+    $('#bgmTrack').value = s.bgmTrack;
+    syncBgmUI();
+    stopBgmPreview();
+    const name = $('#bgmTrack').selectedOptions[0]?.textContent ?? s.bgmTrack;
+    toast(`무작위로 골랐습니다 — ${name}`);
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+/* 들어보기 — 같은 버튼으로 멈춘다 */
+const bgmAudio = () => $('#bgmPreview');
+
+function stopBgmPreview() {
+  const a = bgmAudio();
+  a.pause();
+  a.removeAttribute('src');
+  $('#btnBgmPlay').textContent = '▶︎ 들어보기';
+}
+
+$('#btnBgmPlay').addEventListener('click', async () => {
+  const a = bgmAudio();
+  const file = $('#bgmTrack').value;
+  if (!file) return;
+
+  if (!a.paused && a.src) return stopBgmPreview();
+
+  // 파일 이름에 공백·따옴표가 들어 있어서 반드시 인코딩해서 보낸다
+  a.src = `/api/bgm/file?name=${encodeURIComponent(file)}`;
+  try {
+    await a.play();
+    $('#btnBgmPlay').textContent = '■ 멈추기';
+  } catch {
+    toast('음원을 재생하지 못했습니다.', true);
+    stopBgmPreview();
+  }
+});
+
+bgmAudio().addEventListener('ended', stopBgmPreview);
