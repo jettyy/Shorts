@@ -11,15 +11,58 @@
     {
       "type": "hook",
       "origin": "creator",
-      "kicker": "2025년 결산 기준",
-      "title": "1위는 1억을\n넘깁니다",
-      "narration": "공기업 평균연봉 상위 열여섯 곳입니다. 1위는 1억을 넘고, 16위와는 2천만 원 넘게 차이납니다.",
-      "durationSec": 5.4,
+      "title": "2위부터가\n더 놀랍습니다",
+      "narration": "1위는 1억이 넘습니다",
+      "durationSec": 2.6,
       "visual": {
-        "kind": "stat",
-        "value": "1억 847",
-        "unit": "만 원",
-        "caption": "1위 한국수력원자력 평균연봉"
+        "kind": "ranklist",
+        "totalRanks": 16,
+        "revealCount": 1,
+        "items": [
+          {
+            "rank": 1,
+            "label": "한국수력원자력",
+            "value": "1억 847만 원",
+            "barValue": 10847,
+            "highlight": true
+          },
+          {
+            "rank": 2,
+            "label": "한국가스공사",
+            "value": "1억 609만 원",
+            "barValue": 10609
+          },
+          {
+            "rank": 3,
+            "label": "한국중부발전",
+            "value": "1억 233만 원",
+            "barValue": 10233
+          },
+          {
+            "rank": 4,
+            "label": "한국남부발전",
+            "value": "1억 127만 원",
+            "barValue": 10127
+          },
+          {
+            "rank": 5,
+            "label": "한국전력기술",
+            "value": "1억 97만 원",
+            "barValue": 10097
+          },
+          {
+            "rank": 6,
+            "label": "한국남동발전",
+            "value": "9,964만 원",
+            "barValue": 9964
+          },
+          {
+            "rank": 7,
+            "label": "한국동서발전",
+            "value": "9,899만 원",
+            "barValue": 9899
+          }
+        ]
       },
       "headline": "공기업 평균연봉 TOP 16"
     },
@@ -29,7 +72,7 @@
       "kicker": "1위~8위",
       "title": "1억 넘는 곳이\n다섯 군데입니다",
       "narration": "1위부터 8위까지입니다. 발전 계열이 상위권을 거의 다 가져갔습니다.",
-      "durationSec": 7.5,
+      "durationSec": 6.7,
       "visual": {
         "kind": "ranklist",
         "totalRanks": 16,
@@ -92,7 +135,7 @@
       "kicker": "9위~16위",
       "title": "9위부터는\n9천만 원대입니다",
       "narration": "9위부터 16위까지입니다. 이름이 익숙한 곳들이 여기 몰려 있습니다.",
-      "durationSec": 7.2,
+      "durationSec": 6.7,
       "visual": {
         "kind": "ranklist",
         "totalRanks": 16,
@@ -155,7 +198,7 @@
       "kicker": "직접 계산",
       "title": "1위를 12로 나눠봤습니다",
       "narration": "1위 금액을 열두 달로 나누면 월 900만 원이 넘습니다. 다만 이건 세금 떼기 전 금액입니다.",
-      "durationSec": 6.4,
+      "durationSec": 8.2,
       "visual": {
         "kind": "calc",
         "lines": [
@@ -184,7 +227,7 @@
       "kicker": "주의할 점",
       "title": "이 순위를 그대로\n믿으면 안 되는 이유",
       "narration": "평균연봉은 신입 초봉이 아닙니다. 근속연수가 길고 고직급 비중이 높으면 평균이 올라갑니다.",
-      "durationSec": 7.1,
+      "durationSec": 8.4,
       "visual": {
         "kind": "checklist",
         "items": [
@@ -213,7 +256,7 @@
       "kicker": "결론",
       "title": "숫자보다 기준을\n먼저 보세요",
       "narration": "순위만 보지 말고 평균이 어떻게 계산된 숫자인지부터 확인하는 게 낫습니다.",
-      "durationSec": 5.6,
+      "durationSec": 6.9,
       "cta": "기관별 상세는 알리오에서 직접 확인",
       "visual": {
         "kind": "timeline",

@@ -121,13 +121,20 @@ const maxItemsFor = ({ per, gap, font, head }, budget = VISUAL_BUDGET) => {
  * 배너 글자(최대 56) × 줄높이 1.18 + 위아래 padding 28 + 아래 여백 26.
  */
 const HEADLINE_H = Math.round(56 * 1.18) + 28 + 26;
+/**
+ * 1번 카드의 배너는 **화면에서 가장 큰 글자**라 훨씬 높다
+ * (`src/lib/text.ts` 의 BANNER_HERO — 폰트 최대 104 · 줄높이 1.18 · 위아래 18 · 아래 여백 30).
+ * 두 곳의 숫자가 같아야 "카드 밖으로 넘칩니다" 경고가 맞는다.
+ */
+const HERO_HEADLINE_H = Math.round(104 * 1.18) + 36 + 30;
 
 cards.forEach((card, i) => {
   const shape = VISUAL_SHAPE[card.visual?.kind];
   if (!shape) return;
   const count = (card.visual[shape.key] ?? []).length;
   // 배너가 있는 카드는 도표가 쓸 공간이 그만큼 줄어든다
-  const budget = VISUAL_BUDGET - (card.headline ? HEADLINE_H : 0);
+  const budget =
+    VISUAL_BUDGET - (card.headline ? (i === 0 ? HERO_HEADLINE_H : HEADLINE_H) : 0);
   const max = maxItemsFor(shape, budget);
   if (count > max) {
     const parts = Math.ceil(count / max);
@@ -206,6 +213,49 @@ cards.forEach((card, i) => {
     }
   });
 });
+
+/* ── 1번 카드(훅) ─────────────────────────────────────────
+ *
+ * 쇼츠는 첫 0.5초에 계속 볼지가 정해진다. 그 시간에 읽히는 건 많아야 두세 덩어리다.
+ * 예전 영상은 0프레임에 글자 덩어리가 9개나 있었고(라벨·장수·배너·제목 2줄·보조설명·
+ * 큰 숫자·단위·설명), 정작 "무슨 영상인지"가 묻혔다. 여기서 미리 짚어준다.
+ */
+if (cards[0]) {
+  const c = cards[0];
+
+  // kicker·body 는 1번 카드에서 그려지지 않는다 — 대본에 남아 있으면 헷갈린다
+  for (const [field, label] of [['kicker', '상단 라벨'], ['body', '보조 설명']]) {
+    if (String(c[field] ?? '').trim()) {
+      notes.push(
+        `1번 카드의 ${field}(${label})는 그려지지 않습니다. 첫 화면은 배너·제목·도표 셋만 남깁니다.`,
+      );
+    }
+  }
+
+  // 제목이 도표에 이미 있는 숫자를 되풀이하면 읽을 건 늘고 아는 건 안 는다
+  const top = c.visual?.kind === 'ranklist' ? (c.visual.items ?? [])[0] : null;
+  const topValue = String(top?.value ?? '').trim();
+  if (topValue) {
+    const digits = topValue.replace(/[^0-9]/g, '');
+    const titleDigits = String(c.title ?? '').replace(/[^0-9]/g, '');
+    if (digits.length >= 2 && titleDigits.includes(digits.slice(0, 3))) {
+      notes.push(
+        `1번 카드: 제목이 1위 값("${topValue}")을 되풀이합니다. ` +
+          '표에 이미 크게 나와 있으니, 제목은 가려진 순위를 가리키는 편이 낫습니다 ' +
+          '("2위부터가 더 놀랍습니다").',
+      );
+    }
+  }
+
+  // 1번 카드가 길면 정지 화면을 그만큼 보게 된다 — 가장 큰 이탈 요인
+  const hookSec = Number(c.durationSec) || 0;
+  if (hookSec > 4) {
+    notes.push(
+      `1번 카드가 ${hookSec.toFixed(1)}초입니다. 첫 화면이 길면 정지 화면을 그만큼 보게 됩니다 — ` +
+        'narration 을 15자 이내로 줄이면 3초 안쪽으로 떨어집니다.',
+    );
+  }
+}
 
 if (cards[0] && cards[0].type !== 'hook') {
   errors.push('1번 카드의 type 은 "hook" 이어야 합니다.');

@@ -62,10 +62,21 @@ export const wrapTitle = (title: string, maxEm = 15): string[] => {
  */
 export const BANNER = { max: 56, min: 34, paddingX: 26 } as const;
 
-export const fitBannerSize = (text: string): number => {
-  const inner = CONTENT_WIDTH - BANNER.paddingX * 2;
+/**
+ * 1번 카드(훅)의 배너는 **화면에서 가장 큰 글자**여야 한다.
+ *
+ * 쇼츠에서 첫 0.5초에 판단되는 건 "이게 무슨 영상인가" 하나다.
+ * 예전에는 배너가 56px 로 고정이라 제목(최대 118px)과 큰 숫자보다 작았고,
+ * 그래서 눈이 **숫자에 먼저 닿았다** — 숫자만 봐서는 아무 뜻이 없는데도.
+ * 주제가 가장 크고, 나머지가 그 아래로 깔려야 한다.
+ */
+export const BANNER_HERO = { max: 104, min: 46, paddingX: 30 } as const;
+
+export const fitBannerSize = (text: string, hero = false): number => {
+  const spec = hero ? BANNER_HERO : BANNER;
+  const inner = CONTENT_WIDTH - spec.paddingX * 2;
   const byWidth = inner / Math.max(measureEm(text), 1);
-  return Math.max(BANNER.min, Math.min(BANNER.max, byWidth));
+  return Math.max(spec.min, Math.min(spec.max, byWidth));
 };
 
 /**

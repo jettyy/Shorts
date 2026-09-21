@@ -38,8 +38,21 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
   const isLast = index === total;
   const hasVisual = Boolean(card.visual);
 
+  /*
+   * 1번 카드는 **주제 배너가 화면에서 가장 큰 글자**여야 한다.
+   *
+   * 첫 0.5초에 판단되는 건 "이게 무슨 영상인가" 하나다. 예전에는 배너가 56px 고정이라
+   * 제목·큰 숫자보다 작았고, 그래서 눈이 숫자에 먼저 닿았다 — 그것만 봐서는
+   * 아무 뜻이 없는 숫자인데도. 그래서 1번 카드에서는 배너를 키우고 제목을 그 아래로 낮춘다.
+   */
+  const heroBanner = Boolean(isFirst && card.headline);
+
   const lines = wrapTitle(card.title, hasVisual ? 17 : 15);
-  const fontSize = fitFontSize(lines, isHook, hasVisual);
+  const natural = fitFontSize(lines, isHook, hasVisual);
+  // 배너보다 제목이 크면 주제가 묻힌다. 배너의 62% 를 넘지 않게 눌러둔다.
+  const fontSize = heroBanner
+    ? Math.min(natural, Math.round(fitBannerSize(card.headline!, true) * 0.62))
+    : natural;
 
   /*
    * 단어를 하나씩 띄우려면 **앞 줄들의 단어 수**를 알아야 한다.
@@ -94,11 +107,16 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
   const topBarOpacity = isFirst
     ? 1
     : interpolate(frame, [3, 16], [0, 1], { extrapolateRight: 'clamp' });
-  const kicker = card.kicker ?? TYPE_LABEL[card.type] ?? '';
+  /*
+   * 1번 카드에서는 상단 라벨을 숨긴다.
+   * 0프레임에 글자 덩어리가 9개나 있었다(라벨·장수·배너·제목 2줄·보조설명·큰 숫자·단위·설명).
+   * 첫 0.5초에 읽히는 건 많아야 두세 개다 — 나머지는 전부 방해물이다.
+   */
+  const kicker = isFirst ? '' : (card.kicker ?? TYPE_LABEL[card.type] ?? '');
 
   // ── 주제 배너 ───────────────────────────────────────────
   // 좌우 여백(배너 padding 26×2)을 빼고 한 줄에 들어갈 크기를 잡는다.
-  const headlineSize = card.headline ? fitBannerSize(card.headline) : 0;
+  const headlineSize = card.headline ? fitBannerSize(card.headline, heroBanner) : 0;
   const headlineIn = isFirst
     ? 1
     : interpolate(frame, [2, 14], [0, 1], { extrapolateRight: 'clamp' });
@@ -194,7 +212,8 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
               width: '100%',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'center',
+              // 1번 카드는 위에서부터 쌓는다 — 가운데로 맞추면 주제가 화면 중앙까지 내려온다
+              justifyContent: heroBanner ? 'flex-start' : 'center',
               flex: 1,
             }}
           >
@@ -208,9 +227,9 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
                 style={{
                   alignSelf: 'flex-start',
                   maxWidth: '100%',
-                  marginBottom: 26,
-                  padding: '14px 26px',
-                  borderRadius: 16,
+                  marginBottom: heroBanner ? 30 : 26,
+                  padding: heroBanner ? '18px 30px' : '14px 26px',
+                  borderRadius: heroBanner ? 20 : 16,
                   background: accent.primary,
                   color: BASE.navyDeepest,
                   fontSize: headlineSize,
@@ -244,7 +263,7 @@ export const Card: React.FC<Props> = ({ card, index, total, accent, source, isFi
               ))}
             </div>
 
-            {card.body ? (
+            {card.body && !isFirst ? (
               <div
                 style={{
                   marginTop: 18,

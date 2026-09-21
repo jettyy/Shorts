@@ -20,6 +20,8 @@ type RowProps = {
   /** 0~1. 막대 길이 (없으면 막대를 안 그린다) */
   ratio: number | null;
   highlight: boolean;
+  /** 가려진 행인가 (1번 카드 예고용 — 순위 숫자만 남기고 흐리게) */
+  hidden?: boolean;
   delay: number;
   accent: Accent;
   h: number;
@@ -35,6 +37,7 @@ const RankRow: React.FC<RowProps> = ({
   unit,
   ratio,
   highlight,
+  hidden = false,
   delay,
   accent,
   h,
@@ -78,6 +81,7 @@ const RankRow: React.FC<RowProps> = ({
             inset: 0,
             width: `${ratio * grow * 100}%`,
             background: highlight ? accent.soft : 'rgba(255,255,255,0.055)',
+            opacity: hidden ? 0.45 : 1,
           }}
         />
       ) : null}
@@ -99,8 +103,16 @@ const RankRow: React.FC<RowProps> = ({
         {rank}
       </div>
 
-      {/* 이름 (+ 한마디) */}
-      <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+      {/* 이름 (+ 한마디) — 가려진 행은 흐리게 해서 "있다"는 것만 남긴다 */}
+      <div
+        style={{
+          position: 'relative',
+          flex: 1,
+          minWidth: 0,
+          filter: hidden ? `blur(${sp(13)}px)` : undefined,
+          opacity: hidden ? 0.5 : 1,
+        }}
+      >
         <div
           style={{
             fontSize: fs(36),
@@ -137,6 +149,8 @@ const RankRow: React.FC<RowProps> = ({
         style={{
           position: 'relative',
           flexShrink: 0,
+          filter: hidden ? `blur(${sp(13)}px)` : undefined,
+          opacity: hidden ? 0.5 : 1,
           fontSize: fs(38),
           fontWeight: 900,
           color: highlight ? accent.bright : BASE.white,
@@ -186,6 +200,15 @@ export const RankListVisual: React.FC<{ data: Data; accent: Accent }> = ({ data,
    * 무엇을 언제 보여주느냐가 시청 지속과 직결되므로 순서를 고를 수 있게 한다.
    * **자리(위치)는 그대로 두고 등장 타이밍만 바꾼다** — 순위가 뒤섞이면 안 된다.
    */
+  /*
+   * 몇 등까지 선명하게 보여줄지. 나머지는 흐릿하게 가려둔다(1번 카드 예고용).
+   * 0 이나 음수를 주면 전부 가려져 아무 정보가 없으므로 최소 1행은 남긴다.
+   */
+  const reveal =
+    typeof data.revealCount === 'number'
+      ? Math.max(1, Math.min(items.length, Math.floor(data.revealCount)))
+      : items.length;
+
   const order = data.reveal ?? STYLE.rank.reveal;
   const delayOf = (i: number) => {
     const last = items.length - 1;
@@ -229,6 +252,7 @@ export const RankListVisual: React.FC<{ data: Data; accent: Accent }> = ({ data,
             unit={data.unit}
             ratio={bars && maxBar > 0 ? bars[i] / maxBar : null}
             highlight={Boolean(item.highlight)}
+            hidden={i >= reveal}
             delay={delayOf(i)}
             accent={accent}
             h={h}
