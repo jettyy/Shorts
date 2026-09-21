@@ -18,8 +18,9 @@
     "test:upload": "node scripts/test-yt-upload.mjs",
     "test:emphasis": "node --experimental-strip-types scripts/test-emphasis.mjs",
     "test:style": "node --experimental-strip-types scripts/test-style-config.mjs",
-    "test": "npm run test:emphasis && npm run test:style && npm run test:bgm && npm run test:slot && npm run test:yt && npm run test:upload",
-    "test:bgm": "node scripts/test-bgm-duck.mjs"
+    "test": "npm run test:emphasis && npm run test:amount && npm run test:style && npm run test:bgm && npm run test:slot && npm run test:yt && npm run test:upload",
+    "test:bgm": "node scripts/test-bgm-duck.mjs",
+    "test:amount": "node --experimental-strip-types scripts/test-amount.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.526",

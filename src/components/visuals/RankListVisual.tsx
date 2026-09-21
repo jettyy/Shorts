@@ -3,6 +3,7 @@ import { BASE, type Accent } from '../../theme';
 import { CONTEXT, GRID, NEUTRAL_RAMP } from '../chartTheme';
 import { fitDensity } from '../../lib/density';
 import { useDraw, useReveal } from './useReveal';
+import { barValues } from '../../lib/amount';
 import { STYLE } from '../../lib/style';
 import type { RankListVisual as Data } from '../../types';
 
@@ -13,6 +14,7 @@ const ROW_GAP = 12;
 type RowProps = {
   rank: number;
   label: string;
+  note?: string;
   value: string;
   unit?: string;
   /** 0~1. 막대 길이 (없으면 막대를 안 그린다) */
@@ -28,6 +30,7 @@ type RowProps = {
 const RankRow: React.FC<RowProps> = ({
   rank,
   label,
+  note,
   value,
   unit,
   ratio,
@@ -96,22 +99,37 @@ const RankRow: React.FC<RowProps> = ({
         {rank}
       </div>
 
-      {/* 이름 */}
-      <div
-        style={{
-          position: 'relative',
-          flex: 1,
-          minWidth: 0,
-          fontSize: fs(36),
-          fontWeight: highlight ? 900 : 700,
-          color: highlight ? BASE.white : BASE.textMuted,
-          letterSpacing: '-0.03em',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {label}
+      {/* 이름 (+ 한마디) */}
+      <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: fs(36),
+            fontWeight: highlight ? 900 : 700,
+            color: highlight ? BASE.white : BASE.textMuted,
+            letterSpacing: '-0.03em',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {label}
+        </div>
+        {note ? (
+          <div
+            style={{
+              marginTop: sp(2),
+              fontSize: fs(23),
+              fontWeight: 600,
+              color: CONTEXT,
+              letterSpacing: '-0.02em',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {note}
+          </div>
+        ) : null}
       </div>
 
       {/* 값 — 영상엔 마우스 오버가 없으니 항상 직접 찍는다 */}
@@ -155,8 +173,13 @@ export const RankListVisual: React.FC<{ data: Data; accent: Accent }> = ({ data,
   const h = d.sp(ROW_H);
   const gap = d.sp(ROW_GAP);
 
-  // 막대는 이 카드에 실린 값들 중 최댓값 기준으로 그린다
-  const maxBar = Math.max(...items.map((i) => i.barValue ?? 0), 0);
+  /*
+   * 막대 길이.
+   * barValue 를 직접 안 적었으면 value 에서 읽어낸다 — 대본에서 빠뜨려도
+   * 막대가 깔리게. 한 줄이라도 못 읽으면 통째로 끈다(일부만 깔리면 오해를 부른다).
+   */
+  const bars = barValues(items);
+  const maxBar = bars ? Math.max(...bars) : 0;
 
   /*
    * 등장 순서. 목록이 위에서 아래로 그냥 깔리면 "다 봤다"는 느낌에 중간에 나간다.
@@ -201,9 +224,10 @@ export const RankListVisual: React.FC<{ data: Data; accent: Accent }> = ({ data,
             key={i}
             rank={item.rank ?? i + 1}
             label={item.label}
+            note={item.note}
             value={item.value}
             unit={data.unit}
-            ratio={maxBar > 0 && item.barValue ? item.barValue / maxBar : null}
+            ratio={bars && maxBar > 0 ? bars[i] / maxBar : null}
             highlight={Boolean(item.highlight)}
             delay={delayOf(i)}
             accent={accent}

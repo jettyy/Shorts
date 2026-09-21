@@ -13,11 +13,17 @@
  * 스스로 점검하라는 용도다. 판단은 사람이 한다.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const target = process.argv[2] ? join(root, process.argv[2]) : join(root, 'src', 'script.json');
+// 절대 경로로 줘도 되게 한다 (join(root, '/a/b') 는 엉뚱한 곳을 가리킨다)
+const arg = process.argv[2];
+const target = arg
+  ? isAbsolute(arg)
+    ? arg
+    : join(root, arg)
+  : join(root, 'src', 'script.json');
 const data = JSON.parse(readFileSync(target, 'utf8'));
 const cards = data.cards ?? [];
 
@@ -131,6 +137,74 @@ cards.forEach((card, i) => {
         (card.visual.kind === 'ranklist' ? ' (rank 를 직접 지정하면 번호가 이어집니다).' : '.'),
     );
   }
+});
+
+/* ── 순위·비교표에 값이 비어 있지 않은가 ──────────────────
+ *
+ * 순위와 이름만 있고 **오른쪽 값이 비어 있으면 그냥 목록**이라 볼 이유가 없다.
+ * 렌더러는 값을 그릴 자리를 이미 잡아두므로, 비어 있으면 빈칸이 그대로 나간다.
+ * 눈으로는 "왜 심심하지" 정도로만 느껴져서 놓치기 쉬워 여기서 막는다.
+ *
+ * 숫자가 없는 순위라면 짧은 설명이라도 넣어야 한다 ("3년 연속", "전국 1위" 등).
+ */
+cards.forEach((card, i) => {
+  const no = i + 1;
+  const v = card.visual;
+  if (v?.kind !== 'ranklist') return;
+
+  (v.items ?? []).forEach((item, j) => {
+    const rank = item.rank ?? j + 1;
+    if (!String(item.value ?? '').trim()) {
+      errors.push(
+        `${no}번 카드 ${rank}위(${item.label ?? '이름 없음'}): value 가 비어 있습니다. ` +
+          '순위·이름만 나오면 볼 이유가 없습니다 — 구체적인 수치를 넣어주세요 ' +
+          '(숫자가 없는 순위면 "3년 연속" 같은 짧은 설명이라도).',
+      );
+    }
+    if (!String(item.label ?? '').trim()) {
+      errors.push(`${no}번 카드 ${rank}위: label(이름)이 비어 있습니다.`);
+    }
+  });
+
+  // 값이 전부 같으면 순위를 매길 이유가 없다 — 대개 대본이 잘못 만들어진 것이다
+  const values = (v.items ?? []).map((it) => String(it.value ?? '').trim());
+  if (values.length > 2 && new Set(values).size === 1) {
+    notes.push(`${no}번 카드: 순위표의 값이 전부 "${values[0]}" 로 같습니다. 실제 수치가 맞는지 확인해주세요.`);
+  }
+
+  /*
+   * 막대를 깔 수 있는지 미리 알려준다 (깔리면 순위가 훨씬 잘 읽힌다).
+   *
+   * 여기서는 **숫자가 들어 있는지만** 본다. 단위까지 계산하는 진짜 해석은
+   * `src/lib/amount.ts` 가 하는데, 그건 TypeScript 라 이 검사기(plain node)에서
+   * 부르려면 새 node 가 필요하다. 같은 계산을 두 곳에 적으면 갈라지기 마련이라
+   * **여기서는 "숫자가 아예 없는 행"만** 짚는다 — 실제로 걸리는 건 그 경우다.
+   */
+  const noDigit = (v.items ?? []).filter(
+    (it) => typeof it.barValue !== 'number' && !/\d/.test(String(it.value ?? '')),
+  );
+  if (values.length && noDigit.length && noDigit.length < values.length) {
+    notes.push(
+      `${no}번 카드: 숫자가 없는 행이 있어 순위 막대가 안 깔립니다 ` +
+        `(${noDigit.map((it) => `"${it.value}"`).join(', ')}). ` +
+        '수치를 넣거나 barValue 를 직접 적어주세요.',
+    );
+  }
+});
+
+// 비교표도 같다 — 항목 이름만 있고 양쪽 칸이 비면 비교가 안 된다
+cards.forEach((card, i) => {
+  const v = card.visual;
+  if (v?.kind !== 'table') return;
+  (v.rows ?? []).forEach((row) => {
+    const empty = ['a', 'b'].filter((k) => !String(row[k] ?? '').trim());
+    if (empty.length) {
+      errors.push(
+        `${i + 1}번 카드 "${row.label ?? '이름 없음'}" 행: ${empty.join('·')} 칸이 비어 있습니다. ` +
+          '비교표는 양쪽 값이 다 있어야 비교가 됩니다 (해당 없으면 "없음", "-" 이라도 적어주세요).',
+      );
+    }
+  });
 });
 
 if (cards[0] && cards[0].type !== 'hook') {
